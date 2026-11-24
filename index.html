@@ -1,0 +1,2292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Noel Delivery: Pizzaria de Natal</title>
+
+    <!-- Fontes divertidas e legíveis para o estilo arcade natalino -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Phaser 3.80.1 via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+
+    <style>
+        /* =========================================================
+           ESTILOS GLOBAIS & LAYOUT MOBILE-FIRST (SEM SCROLL/ZOOM)
+           ========================================================= */
+        :root {
+            --bg-outer: #070b1a;
+            --frame-border: #22305c;
+            --gold: #ffd166;
+            --red: #e63946;
+            --red-dark: #b01e2b;
+            --green: #2ec4b6;
+            --green-festive: #22c55e;
+            --green-dark: #15803d;
+            --sky-btn: #3b82f6;
+            --sky-btn-dark: #1d4ed8;
+            --text-light: #f8fafc;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            background: radial-gradient(circle at top, #131c3d 0%, #060914 100%);
+            font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-light);
+            touch-action: none; /* Evita scroll acidental e pinch-zoom no mobile */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Gabinete principal: tela cheia no celular, moldura elegante centralizada no desktop */
+        #game-shell {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            max-width: 500px;
+            max-height: 920px;
+            display: flex;
+            flex-direction: column;
+            background: #0b132b;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+        }
+
+        @media (min-width: 540px) {
+            #game-shell {
+                height: min(94dvh, 880px);
+                width: min(94vw, 480px);
+                border-radius: 28px;
+                border: 3px solid var(--frame-border);
+                box-shadow: 0 25px 70px rgba(0, 0, 0, 0.8), 0 0 40px rgba(59, 130, 246, 0.15);
+            }
+        }
+
+        /* =========================================================
+           PALCO DO JOGO (CANVAS DO PHASER + HUD + OVERLAYS)
+           ========================================================= */
+        #stage-wrapper {
+            position: relative;
+            flex: 1 1 auto;
+            width: 100%;
+            min-height: 0;
+            background: linear-gradient(180deg, #0b1332 0%, #1b2859 60%, #243b6b 100%);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #phaser-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #phaser-container canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain;
+            touch-action: none;
+        }
+
+        /* =========================================================
+           HUD SUPERIOR (VIDAS, PIZZAS, PONTOS, COMBO E SOM)
+           ========================================================= */
+        #hud-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: max(10px, env(safe-area-inset-top)) 12px 8px 12px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .hud-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hud-pill {
+            background: rgba(11, 19, 43, 0.72);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1.5px solid rgba(255, 255, 255, 0.16);
+            border-radius: 16px;
+            padding: 6px 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        #hearts-container {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .heart-icon {
+            width: 20px;
+            height: 20px;
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+            filter: drop-shadow(0 2px 4px rgba(230, 57, 70, 0.5));
+        }
+
+        .heart-icon.lost {
+            opacity: 0.22;
+            transform: scale(0.75);
+            filter: grayscale(1);
+        }
+
+        .score-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .score-main {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .pizza-stat {
+            color: #ffb703;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .points-stat {
+            color: #ffffff;
+        }
+
+        #combo-badge {
+            background: linear-gradient(135deg, #f59e0b, #ef4444);
+            color: #fff;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1.5px solid #fde68a;
+            box-shadow: 0 3px 10px rgba(245, 158, 11, 0.45);
+            opacity: 0;
+            transform: scale(0.6) translateY(-4px);
+            transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+            white-space: nowrap;
+        }
+
+        #combo-badge.visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+
+        .hud-icon-btn {
+            pointer-events: auto;
+            width: 38px;
+            height: 38px;
+            border-radius: 13px;
+            border: 1.5px solid rgba(255, 255, 255, 0.2);
+            background: rgba(11, 19, 43, 0.78);
+            backdrop-filter: blur(8px);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            transition: transform 0.12s ease, background 0.15s ease;
+        }
+
+        .hud-icon-btn:active {
+            transform: scale(0.92);
+        }
+
+        /* =========================================================
+           OVERLAYS (TELA INICIAL, PAUSA E GAME OVER)
+           ========================================================= */
+        .overlay-screen {
+            position: absolute;
+            inset: 0;
+            z-index: 30;
+            background: rgba(7, 12, 30, 0.72);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+        }
+
+        .overlay-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .modal-card {
+            width: 100%;
+            max-width: 360px;
+            background: linear-gradient(165deg, rgba(24, 37, 79, 0.96) 0%, rgba(12, 20, 46, 0.98) 100%);
+            border: 2px solid rgba(255, 209, 102, 0.38);
+            border-radius: 26px;
+            padding: 24px 20px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            animation: cardPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes cardPop {
+            from { opacity: 0; transform: scale(0.88) translateY(14px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .festive-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(230, 57, 70, 0.2);
+            border: 1px solid rgba(230, 57, 70, 0.55);
+            color: #fda4af;
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            margin-bottom: 10px;
+        }
+
+        .game-title {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 36px;
+            line-height: 1.05;
+            font-weight: 700;
+            background: linear-gradient(180deg, #ffffff 0%, #fde68a 60%, #f59e0b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+            margin-bottom: 4px;
+        }
+
+        .game-subtitle {
+            font-size: 14px;
+            color: #cbd5e1;
+            margin-bottom: 16px;
+            font-weight: 700;
+        }
+
+        .guide-box {
+            background: rgba(8, 14, 34, 0.65);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 16px;
+            padding: 12px;
+            margin-bottom: 16px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+
+        .guide-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            line-height: 1.3;
+        }
+
+        .guide-badge {
+            flex-shrink: 0;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 8px;
+            min-width: 66px;
+            text-align: center;
+            color: #fff;
+        }
+
+        .guide-badge.fly { background: linear-gradient(180deg, #3b82f6, #1d4ed8); }
+        .guide-badge.pizza { background: linear-gradient(180deg, #f97316, #dc2626); }
+        .guide-badge.vip { background: linear-gradient(180deg, #eab308, #b45309); }
+
+        .highscore-banner {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 209, 102, 0.14);
+            border: 1px solid rgba(255, 209, 102, 0.35);
+            color: #fde68a;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 14px;
+            padding: 6px 14px;
+            border-radius: 12px;
+            margin-bottom: 18px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 14px 0 18px 0;
+        }
+
+        .stat-card {
+            background: rgba(8, 14, 34, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 10px 8px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #94a3b8;
+            font-weight: 700;
+        }
+
+        .stat-value {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 22px;
+            color: #fff;
+            margin-top: 2px;
+        }
+
+        .stat-value.gold { color: #ffd166; }
+
+        .new-record-tag {
+            display: none;
+            background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+            color: #1e1b4b;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            padding: 4px 14px;
+            border-radius: 999px;
+            margin-bottom: 10px;
+            animation: pulseRecord 1.2s infinite ease-in-out;
+        }
+
+        .new-record-tag.show {
+            display: inline-block;
+        }
+
+        @keyframes pulseRecord {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+        }
+
+        /* Botões principais estilo arcade brilhante */
+        .btn-primary {
+            width: 100%;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            color: #fff;
+            background: linear-gradient(180deg, #22c55e 0%, #16a34a 55%, #15803d 100%);
+            border: 2px solid #86efac;
+            border-radius: 18px;
+            padding: 14px 20px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #14532d, 0 12px 24px rgba(22, 163, 74, 0.4);
+            transition: transform 0.08s ease, box-shadow 0.08s ease;
+        }
+
+        .btn-primary:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #14532d, 0 6px 12px rgba(22, 163, 74, 0.35);
+        }
+
+        .btn-secondary {
+            width: 100%;
+            margin-top: 10px;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            color: #e2e8f0;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1.5px solid rgba(255, 255, 255, 0.2);
+            border-radius: 14px;
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+
+        .btn-secondary:active {
+            transform: scale(0.97);
+        }
+
+        .keyboard-hint {
+            margin-top: 12px;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        /* =========================================================
+           PAINEL INFERIOR DE CONTROLES TÁTEIS (FORA DO CANVAS)
+           ========================================================= */
+        #controls-deck {
+            flex: 0 0 auto;
+            background: linear-gradient(180deg, #101935 0%, #090e21 100%);
+            border-top: 2px solid rgba(255, 255, 255, 0.1);
+            padding: 12px 14px max(14px, env(safe-area-inset-bottom)) 14px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            z-index: 25;
+        }
+
+        .thumb-btn {
+            position: relative;
+            overflow: hidden;
+            border-radius: 20px;
+            padding: 14px 10px;
+            min-height: 74px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            cursor: pointer;
+            touch-action: none;
+            transition: transform 0.07s ease, box-shadow 0.07s ease, filter 0.1s ease;
+        }
+
+        .thumb-btn-title {
+            font-family: 'Fredoka', sans-serif;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .thumb-btn-sub {
+            font-size: 11px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.85);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* Botão Esquerdo: VOAR */
+        #btn-fly {
+            background: linear-gradient(180deg, #38bdf8 0%, #2563eb 55%, #1d4ed8 100%);
+            border: 2px solid #93c5fd;
+            box-shadow: 0 6px 0 #1e3a8a, 0 10px 20px rgba(37, 99, 235, 0.38);
+        }
+
+        #btn-fly.pressed {
+            transform: translateY(5px);
+            box-shadow: 0 1px 0 #1e3a8a, 0 4px 10px rgba(37, 99, 235, 0.45);
+            filter: brightness(1.12);
+        }
+
+        /* Botão Direito: LANÇAR PIZZA */
+        #btn-pizza {
+            background: linear-gradient(180deg, #fb923c 0%, #ef4444 55%, #b91c1c 100%);
+            border: 2px solid #fdba74;
+            box-shadow: 0 6px 0 #7f1d1d, 0 10px 20px rgba(239, 68, 68, 0.38);
+        }
+
+        #btn-pizza.pressed {
+            transform: translateY(5px);
+            box-shadow: 0 1px 0 #7f1d1d, 0 4px 10px rgba(239, 68, 68, 0.45);
+            filter: brightness(1.12);
+        }
+
+        /* Barra visual de recarga rápida da pizza */
+        #pizza-cooldown-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 5px;
+            width: 0%;
+            background: #fde047;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        /* Brilho superior sutil estilo bolha nos botões */
+        .thumb-btn::before {
+            content: '';
+            position: absolute;
+            top: 4px;
+            left: 10px;
+            right: 10px;
+            height: 32%;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
+            border-radius: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-shell">
+        <!-- =========================================================
+             ÁREA DO JOGO + HUD + TELAS DE INTERFACE
+             ========================================================= -->
+        <div id="stage-wrapper">
+            <!-- Canvas renderizado pelo Phaser 3 -->
+            <div id="phaser-container"></div>
+
+            <!-- HUD Superior -->
+            <div id="hud-bar">
+                <!-- Vidas (Corações) -->
+                <div class="hud-pill" aria-label="Vidas">
+                    <div id="hearts-container">
+                        <svg class="heart-icon" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                        <svg class="heart-icon" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                        <svg class="heart-icon" viewBox="0 0 24 24" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </div>
+                </div>
+
+                <!-- Placar de Pizzas, Pontos e Combo -->
+                <div class="score-stack">
+                    <div class="hud-pill score-main">
+                        <span class="pizza-stat" title="Pizzas entregues">🍕 <span id="hud-pizzas">0</span></span>
+                        <span style="opacity:0.3">|</span>
+                        <span class="points-stat"><span id="hud-score">0</span> pts</span>
+                    </div>
+                    <div id="combo-badge">COMBO x2!</div>
+                </div>
+
+                <!-- Botões de Pausa e Áudio -->
+                <div class="hud-group">
+                    <button id="btn-pause" class="hud-icon-btn" aria-label="Pausar jogo" title="Pausar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="4" width="4" height="16" rx="1.5"></rect>
+                            <rect x="14" y="4" width="4" height="16" rx="1.5"></rect>
+                        </svg>
+                    </button>
+                    <button id="btn-mute" class="hud-icon-btn" aria-label="Ativar ou silenciar som" title="Som">
+                        <svg id="icon-sound-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"></polygon>
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                        </svg>
+                        <svg id="icon-sound-off" style="display:none" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#f87171"></polygon>
+                            <line x1="23" y1="9" x2="17" y2="15"></line>
+                            <line x1="17" y1="9" x2="23" y2="15"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- TELA INICIAL -->
+            <div id="title-overlay" class="overlay-screen">
+                <div class="modal-card">
+                    <div class="festive-pill">🎅 Pizzaria de Natal 🍕</div>
+                    <h1 class="game-title">Noel Delivery</h1>
+                    <p class="game-subtitle">Entregue pizzas quentinhas nas chaminés!</p>
+
+                    <div class="guide-box">
+                        <div class="guide-row">
+                            <span class="guide-badge fly">VOAR</span>
+                            <span><strong>Segure</strong> para subir com o trenó e desviar dos obstáculos no céu.</span>
+                        </div>
+                        <div class="guide-row">
+                            <span class="guide-badge pizza">PIZZA</span>
+                            <span><strong>Toque</strong> para lançar caixas de pizza nas chaminés fumegantes.</span>
+                        </div>
+                        <div class="guide-row">
+                            <span class="guide-badge vip">CASA VIP</span>
+                            <span>Chaminés <strong>douradas</strong> valem o <strong>dobro</strong> de pontos!</span>
+                        </div>
+                    </div>
+
+                    <div class="highscore-banner">
+                        🏆 Recorde: <span id="title-highscore">0</span> pts
+                    </div>
+
+                    <button id="btn-start" class="btn-primary">JOGAR</button>
+                    <p class="keyboard-hint">PC: Espaço / ↑ / W (Voar) • Enter / → / F (Lançar Pizza)</p>
+                </div>
+            </div>
+
+            <!-- TELA DE PAUSA -->
+            <div id="pause-overlay" class="overlay-screen hidden">
+                <div class="modal-card">
+                    <div class="festive-pill">⏸ Jogo Pausado</div>
+                    <h2 class="game-title" style="font-size: 30px; margin-bottom: 14px;">Pausa pro Café</h2>
+                    <button id="btn-resume" class="btn-primary">CONTINUAR</button>
+                    <button id="btn-restart-pause" class="btn-secondary">REINICIAR ENTREGA</button>
+                </div>
+            </div>
+
+            <!-- TELA DE GAME OVER -->
+            <div id="gameover-overlay" class="overlay-screen hidden">
+                <div class="modal-card">
+                    <div id="new-record-badge" class="new-record-tag">✨ NOVO RECORDE! ✨</div>
+                    <div class="festive-pill" style="margin-bottom: 6px;">❄️ Noite Encerrada</div>
+                    <h2 class="game-title" style="font-size: 32px;">Fim da Entrega!</h2>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Pontuação</div>
+                            <div class="stat-value gold" id="go-score">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Pizzas</div>
+                            <div class="stat-value" id="go-pizzas">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Melhor Combo</div>
+                            <div class="stat-value" id="go-combo">x0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Recorde</div>
+                            <div class="stat-value gold" id="go-highscore">0</div>
+                        </div>
+                    </div>
+
+                    <button id="btn-retry" class="btn-primary">JOGAR NOVAMENTE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================================================
+             CONTROLES DE POLEGAR (DEDICADOS NO RODAPÉ)
+             ========================================================= -->
+        <div id="controls-deck">
+            <button id="btn-fly" class="thumb-btn" type="button" aria-label="Segure para voar">
+                <span class="thumb-btn-title">🛷 VOAR</span>
+                <span class="thumb-btn-sub">Segure para subir</span>
+            </button>
+
+            <button id="btn-pizza" class="thumb-btn" type="button" aria-label="Toque para lançar pizza">
+                <span class="thumb-btn-title">🍕 LANÇAR PIZZA</span>
+                <span class="thumb-btn-sub">Toque para entregar</span>
+                <div id="pizza-cooldown-bar"></div>
+            </button>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        /* =====================================================================
+           1. SINTETIZADOR DE ÁUDIO (WEB AUDIO API - SEM ARQUIVOS EXTERNOS)
+           ===================================================================== */
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.lastThrustTime = 0;
+
+                try {
+                    const savedMute = localStorage.getItem('noel_delivery_muted');
+                    this.muted = savedMute === 'true';
+                } catch (e) {
+                    this.muted = false;
+                }
+            }
+
+            /** Inicializa ou desbloqueia o AudioContext no primeiro toque do usuário */
+            unlock() {
+                try {
+                    if (!this.ctx) {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (AudioCtx) {
+                            this.ctx = new AudioCtx();
+                        }
+                    }
+                    if (this.ctx && this.ctx.state === 'suspended') {
+                        this.ctx.resume();
+                    }
+                } catch (e) {
+                    // Ignora silenciosamente se o navegador bloquear áudio
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                try {
+                    localStorage.setItem('noel_delivery_muted', String(this.muted));
+                } catch (e) {}
+                return this.muted;
+            }
+
+            /** Efeito suave de propulsão do trenó ao segurar VOAR */
+            playThrust() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                if (now - this.lastThrustTime < 0.16) return;
+                this.lastThrustTime = now;
+
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(190, now);
+                    osc.frequency.exponentialRampToValueAtTime(320, now + 0.11);
+
+                    gain.gain.setValueAtTime(0.001, now);
+                    gain.gain.linearRampToValueAtTime(0.045, now + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.14);
+                } catch (e) {}
+            }
+
+            /** Som ágil de "pop/whoosh" ao lançar a caixa de pizza */
+            playToss() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(340, now);
+                    osc.frequency.exponentialRampToValueAtTime(640, now + 0.07);
+                    osc.frequency.exponentialRampToValueAtTime(280, now + 0.13);
+
+                    gain.gain.setValueAtTime(0.001, now);
+                    gain.gain.linearRampToValueAtTime(0.14, now + 0.015);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                } catch (e) {}
+            }
+
+            /** Sinos natalinos ascendentes conforme o combo cresce (e acorde extra para Casa VIP) */
+            playDelivery(combo = 1, isVip = false) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    // Escala pentatônica maior brilhante para subir o tom a cada combo
+                    const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
+                    const baseFreq = scale[Math.min(combo - 1, scale.length - 1)];
+
+                    const notes = isVip
+                        ? [baseFreq, baseFreq * 1.25, baseFreq * 1.5, baseFreq * 2]
+                        : [baseFreq, baseFreq * 1.5];
+
+                    notes.forEach((freq, idx) => {
+                        const start = now + idx * 0.055;
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, start);
+
+                        gain.gain.setValueAtTime(0.001, start);
+                        gain.gain.linearRampToValueAtTime(isVip ? 0.16 : 0.13, start + 0.01);
+                        gain.gain.exponentialRampToValueAtTime(0.001, start + (isVip ? 0.42 : 0.28));
+
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(start);
+                        osc.stop(start + 0.45);
+                    });
+                } catch (e) {}
+            }
+
+            /** Som abafado na neve quando uma pizza erra a chaminé */
+            playMiss() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(145, now);
+                    osc.frequency.exponentialRampToValueAtTime(52, now + 0.12);
+
+                    gain.gain.setValueAtTime(0.14, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.14);
+                } catch (e) {}
+            }
+
+            /** Som de colisão com obstáculo */
+            playHit() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(210, now);
+                    osc.frequency.exponentialRampToValueAtTime(65, now + 0.24);
+
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.27);
+                } catch (e) {}
+            }
+
+            /** Pequena melodia descendente de Game Over */
+            playGameOver() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = [392.0, 349.23, 311.13, 261.63];
+                    notes.forEach((freq, i) => {
+                        const start = now + i * 0.13;
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, start);
+
+                        gain.gain.setValueAtTime(0.001, start);
+                        gain.gain.linearRampToValueAtTime(0.14, start + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.24);
+
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(start);
+                        osc.stop(start + 0.26);
+                    });
+                } catch (e) {}
+            }
+
+            /** Clique sutil para botões da interface */
+            playClick() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(620, now);
+                    osc.frequency.exponentialRampToValueAtTime(840, now + 0.05);
+                    gain.gain.setValueAtTime(0.09, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.07);
+                } catch (e) {}
+            }
+        }
+
+        const soundFX = new SoundFX();
+
+        /* =====================================================================
+           2. ESTADO COMPARTILHADO ENTRE UI (DOM) E PHASER
+           ===================================================================== */
+        const STORAGE_HIGHSCORE_KEY = 'noel_delivery_highscore_v1';
+
+        const gameBridge = {
+            scene: null,
+            isFlyHeld: false,
+            highScore: 0,
+            loadHighScore() {
+                try {
+                    const v = parseInt(localStorage.getItem(STORAGE_HIGHSCORE_KEY) || '0', 10);
+                    this.highScore = Number.isFinite(v) ? v : 0;
+                } catch (e) {
+                    this.highScore = 0;
+                }
+                return this.highScore;
+            },
+            saveHighScore(score) {
+                if (score > this.highScore) {
+                    this.highScore = score;
+                    try {
+                        localStorage.setItem(STORAGE_HIGHSCORE_KEY, String(score));
+                    } catch (e) {}
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        gameBridge.loadHighScore();
+
+        /* Referências dos elementos de interface */
+        const ui = {
+            hudPizzas: document.getElementById('hud-pizzas'),
+            hudScore: document.getElementById('hud-score'),
+            comboBadge: document.getElementById('combo-badge'),
+            hearts: Array.from(document.querySelectorAll('.heart-icon')),
+            titleOverlay: document.getElementById('title-overlay'),
+            pauseOverlay: document.getElementById('pause-overlay'),
+            gameoverOverlay: document.getElementById('gameover-overlay'),
+            titleHighscore: document.getElementById('title-highscore'),
+            goScore: document.getElementById('go-score'),
+            goPizzas: document.getElementById('go-pizzas'),
+            goCombo: document.getElementById('go-combo'),
+            goHighscore: document.getElementById('go-highscore'),
+            newRecordBadge: document.getElementById('new-record-badge'),
+            btnStart: document.getElementById('btn-start'),
+            btnRetry: document.getElementById('btn-retry'),
+            btnPause: document.getElementById('btn-pause'),
+            btnResume: document.getElementById('btn-resume'),
+            btnRestartPause: document.getElementById('btn-restart-pause'),
+            btnMute: document.getElementById('btn-mute'),
+            iconSoundOn: document.getElementById('icon-sound-on'),
+            iconSoundOff: document.getElementById('icon-sound-off'),
+            btnFly: document.getElementById('btn-fly'),
+            btnPizza: document.getElementById('btn-pizza'),
+            pizzaCooldownBar: document.getElementById('pizza-cooldown-bar')
+        };
+
+        function syncMuteIcon() {
+            ui.iconSoundOn.style.display = soundFX.muted ? 'none' : 'block';
+            ui.iconSoundOff.style.display = soundFX.muted ? 'block' : 'none';
+        }
+        syncMuteIcon();
+        ui.titleHighscore.textContent = gameBridge.highScore.toLocaleString('pt-BR');
+
+        function updateHUD(score, pizzas, combo, lives) {
+            ui.hudScore.textContent = score.toLocaleString('pt-BR');
+            ui.hudPizzas.textContent = String(pizzas);
+
+            if (combo >= 2) {
+                ui.comboBadge.textContent = `COMBO x${combo}!`;
+                ui.comboBadge.classList.add('visible');
+            } else {
+                ui.comboBadge.classList.remove('visible');
+            }
+
+            ui.hearts.forEach((heartEl, idx) => {
+                if (idx < lives) {
+                    heartEl.classList.remove('lost');
+                } else {
+                    heartEl.classList.add('lost');
+                }
+            });
+        }
+
+        function showGameOverScreen(score, pizzas, bestCombo) {
+            const isNewRecord = gameBridge.saveHighScore(score);
+            ui.goScore.textContent = score.toLocaleString('pt-BR');
+            ui.goPizzas.textContent = String(pizzas);
+            ui.goCombo.textContent = bestCombo > 0 ? `x${bestCombo}` : 'x0';
+            ui.goHighscore.textContent = gameBridge.highScore.toLocaleString('pt-BR');
+            ui.titleHighscore.textContent = gameBridge.highScore.toLocaleString('pt-BR');
+
+            if (isNewRecord && score > 0) {
+                ui.newRecordBadge.classList.add('show');
+            } else {
+                ui.newRecordBadge.classList.remove('show');
+            }
+
+            ui.gameoverOverlay.classList.remove('hidden');
+        }
+
+        /* =====================================================================
+           3. GERADOR PROCEDURAL DE SPRITES (FÁCIL DE SUBSTITUIR POR PNGs)
+           ===================================================================== */
+        /**
+         * Gera todas as texturas vetoriais iniciais usando Phaser Graphics.
+         * Quando você quiser usar suas próprias artes PNG, basta:
+         * 1) Carregar com `this.load.image('chave', 'caminho/arquivo.png')` no `preload()`.
+         * 2) A função `generateProceduralTextures` verifica `scene.textures.exists(key)`
+         *    e só cria o placeholder se você ainda não carregou uma imagem customizada!
+         */
+        function generateProceduralTextures(scene) {
+            // --- 1. TRENÓ DO PAPAI NOEL (`santa_sleigh`) ---
+            if (!scene.textures.exists('santa_sleigh')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+
+                // Patins dourados do trenó
+                g.lineStyle(4, 0xfbbf24, 1);
+                g.beginPath();
+                g.moveTo(8, 52);
+                g.lineTo(74, 52);
+                g.arc(74, 44, 8, Math.PI * 0.5, -Math.PI * 0.35, true);
+                g.strokePath();
+
+                // Suportes dos patins
+                g.lineStyle(3, 0xd97706, 1);
+                g.lineBetween(24, 52, 24, 42);
+                g.lineBetween(60, 52, 60, 42);
+
+                // Pilha de caixas de pizza atrás do Noel
+                g.fillStyle(0xfef3c7, 1);
+                g.fillRoundedRect(10, 22, 20, 8, 2);
+                g.fillRoundedRect(12, 14, 18, 8, 2);
+                g.lineStyle(2, 0xef4444, 1);
+                g.lineBetween(10, 26, 30, 26);
+                g.lineBetween(12, 18, 30, 18);
+
+                // Corpo do Papai Noel (casaco vermelho)
+                g.fillStyle(0xdc2626, 1);
+                g.fillRoundedRect(32, 18, 24, 22, 8);
+                // Cinto preto e fivela dourada
+                g.fillStyle(0x1e293b, 1);
+                g.fillRect(33, 30, 22, 4);
+                g.fillStyle(0xfacc15, 1);
+                g.fillRect(43, 29, 6, 6);
+
+                // Cabeça do Papai Noel
+                g.fillStyle(0xfed7aa, 1);
+                g.fillCircle(46, 15, 8);
+                // Barba branca fofa
+                g.fillStyle(0xffffff, 1);
+                g.fillCircle(48, 20, 6);
+                g.fillCircle(43, 20, 5);
+                // Olho sorridente
+                g.fillStyle(0x0f172a, 1);
+                g.fillCircle(50, 14, 1.5);
+                // Gorro natalino
+                g.fillStyle(0xef4444, 1);
+                g.fillTriangle(36, 12, 53, 11, 32, 3);
+                g.fillStyle(0xffffff, 1);
+                g.fillRoundedRect(37, 9, 17, 4, 2);
+                g.fillCircle(31, 4, 3.5);
+
+                // Corpo do trenó (vermelho com detalhes dourados)
+                g.fillStyle(0xb91c1c, 1);
+                g.fillRoundedRect(8, 30, 62, 16, 7);
+                g.fillStyle(0xef4444, 1);
+                g.fillRoundedRect(10, 31, 58, 9, 5);
+                // Frente curvada do trenó
+                g.fillStyle(0xb91c1c, 1);
+                g.fillCircle(67, 36, 9);
+                // Faixa dourada decorativa
+                g.lineStyle(2.5, 0xfde047, 1);
+                g.lineBetween(14, 41, 66, 41);
+
+                // Mini nariz brilhante na frente (guia mágico)
+                g.fillStyle(0xfef08a, 0.45);
+                g.fillCircle(79, 34, 7);
+                g.fillStyle(0xfef08a, 1);
+                g.fillCircle(79, 34, 3.5);
+
+                g.generateTexture('santa_sleigh', 90, 58);
+                g.destroy();
+            }
+
+            // --- 2. CAIXA DE PIZZA (`pizza_box`) ---
+            if (!scene.textures.exists('pizza_box')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                // Base da caixa kraft/branca
+                g.fillStyle(0xfef3c7, 1);
+                g.fillRoundedRect(2, 2, 28, 22, 4);
+                g.lineStyle(2, 0xd97706, 1);
+                g.strokeRoundedRect(2, 2, 28, 22, 4);
+                // Laço vermelho de natal
+                g.fillStyle(0xef4444, 1);
+                g.fillRect(14, 3, 4, 20);
+                g.fillRect(3, 11, 26, 4);
+                // Ícone de pizza redondinho no centro
+                g.fillStyle(0xf59e0b, 1);
+                g.fillCircle(16, 13, 5.5);
+                g.fillStyle(0xfef08a, 1);
+                g.fillCircle(16, 13, 4);
+                g.fillStyle(0xdc2626, 1);
+                g.fillCircle(14.5, 11.8, 1.1);
+                g.fillCircle(17.5, 13.5, 1.1);
+                g.fillCircle(15.2, 14.8, 1.1);
+
+                g.generateTexture('pizza_box', 32, 26);
+                g.destroy();
+            }
+
+            // --- 3. CASAS NATALINAS (`house_1` e `house_2`) ---
+            const drawHouse = (key, wallColor, roofColor, trimColor, width, height) => {
+                if (scene.textures.exists(key)) return;
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                const roofH = 42;
+                const bodyY = roofH;
+                const bodyH = height - roofH;
+
+                // Parede principal
+                g.fillStyle(wallColor, 1);
+                g.fillRoundedRect(10, bodyY, width - 20, bodyH, 4);
+
+                // Sombra sutil sob o beiral
+                g.fillStyle(0x000000, 0.2);
+                g.fillRect(10, bodyY, width - 20, 8);
+
+                // Janelas acesas quentinhas
+                const drawWindow = (wx, wy, ww, wh) => {
+                    g.fillStyle(0xfef08a, 0.28);
+                    g.fillRoundedRect(wx - 3, wy - 3, ww + 6, wh + 6, 6);
+                    g.fillStyle(0xfde047, 1);
+                    g.fillRoundedRect(wx, wy, ww, wh, 3);
+                    g.lineStyle(2, trimColor, 1);
+                    g.strokeRoundedRect(wx, wy, ww, wh, 3);
+                    g.lineBetween(wx + ww / 2, wy, wx + ww / 2, wy + wh);
+                    g.lineBetween(wx, wy + wh / 2, wx + ww, wy + wh / 2);
+                };
+
+                drawWindow(22, bodyY + 18, 22, 24);
+                drawWindow(width - 44, bodyY + 18, 22, 24);
+
+                // Porta aconchegante com guirlanda
+                const doorW = 24;
+                const doorH = 38;
+                const doorX = (width - doorW) / 2;
+                const doorY = height - doorH;
+                g.fillStyle(0x78350f, 1);
+                g.fillRoundedRect(doorX, doorY, doorW, doorH, { tl: 10, tr: 10, bl: 0, br: 0 });
+                g.lineStyle(2, 0xfef3c7, 0.7);
+                g.strokeRoundedRect(doorX, doorY, doorW, doorH, { tl: 10, tr: 10, bl: 0, br: 0 });
+                // Guirlanda verde na porta
+                g.lineStyle(3, 0x22c55e, 1);
+                g.strokeCircle(doorX + doorW / 2, doorY + 15, 5);
+                g.fillStyle(0xef4444, 1);
+                g.fillCircle(doorX + doorW / 2, doorY + 10, 2);
+
+                // Telhado inclinado
+                g.fillStyle(roofColor, 1);
+                g.fillTriangle(2, roofH + 4, width - 2, roofH + 4, width / 2, 4);
+
+                // Neve fofa sobre o telhado
+                g.lineStyle(8, 0xf8fafc, 1);
+                g.lineBetween(6, roofH + 2, width / 2, 6);
+                g.lineBetween(width / 2, 6, width - 6, roofH + 2);
+                g.fillStyle(0xf8fafc, 1);
+                g.fillCircle(6, roofH + 3, 5);
+                g.fillCircle(width - 6, roofH + 3, 5);
+
+                // Pisca-pisca de Natal no beiral
+                const lightColors = [0xef4444, 0x22c55e, 0xfacc15, 0x38bdf8];
+                for (let lx = 14, i = 0; lx <= width - 14; lx += 14, i++) {
+                    g.fillStyle(lightColors[i % lightColors.length], 1);
+                    g.fillCircle(lx, roofH + 6, 3);
+                }
+
+                g.generateTexture(key, width, height);
+                g.destroy();
+            };
+
+            drawHouse('house_1', 0x991b1b, 0x334155, 0xf8fafc, 128, 128);
+            drawHouse('house_2', 0x1e3a5f, 0x475569, 0xfde68a, 136, 138);
+            drawHouse('house_3', 0x14532d, 0x3f3f46, 0xfef3c7, 122, 122);
+
+            // --- 4. CHAMINÉS (`chimney`, `chimney_vip`, `chimney_done`) ---
+            const drawChimney = (key, brickColor, rimColor, glowColor) => {
+                if (scene.textures.exists(key)) return;
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+
+                if (glowColor) {
+                    g.fillStyle(glowColor, 0.35);
+                    g.fillRoundedRect(2, 2, 40, 44, 8);
+                }
+
+                // Corpo de tijolos
+                g.fillStyle(brickColor, 1);
+                g.fillRoundedRect(8, 12, 28, 34, 3);
+                // Linhas dos tijolos
+                g.lineStyle(1.5, 0x000000, 0.25);
+                g.lineBetween(8, 22, 36, 22);
+                g.lineBetween(8, 32, 36, 32);
+                g.lineBetween(22, 12, 22, 22);
+                g.lineBetween(15, 22, 15, 32);
+                g.lineBetween(28, 22, 28, 32);
+
+                // Borda superior larga
+                g.fillStyle(rimColor, 1);
+                g.fillRoundedRect(5, 8, 34, 8, 3);
+                // Neve na borda
+                g.fillStyle(0xf8fafc, 1);
+                g.fillRoundedRect(6, 6, 14, 4, 2);
+                g.fillRoundedRect(25, 6, 12, 4, 2);
+
+                g.generateTexture(key, 44, 48);
+                g.destroy();
+            };
+
+            drawChimney('chimney', 0xb45309, 0x78350f, 0xfb923c);
+            drawChimney('chimney_vip', 0xeab308, 0xfef08a, 0xfacc15);
+            drawChimney('chimney_done', 0x16a34a, 0x86efac, 0x4ade80);
+
+            // --- 5. OBSTÁCULO: NUVEM DE TEMPESTADE (`obstacle_cloud`) ---
+            if (!scene.textures.exists('obstacle_cloud')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                // Raio elétrico amarelo embaixo
+                g.fillStyle(0xfacc15, 1);
+                g.fillTriangle(36, 38, 46, 38, 32, 54);
+                g.fillTriangle(37, 46, 48, 46, 35, 64);
+
+                // Nuvem escura fofa
+                g.fillStyle(0x334155, 1);
+                g.fillCircle(24, 32, 16);
+                g.fillCircle(42, 24, 20);
+                g.fillCircle(60, 32, 15);
+                g.fillRoundedRect(16, 28, 52, 18, 8);
+
+                // Topo iluminado azul-cinza
+                g.fillStyle(0x475569, 1);
+                g.fillCircle(25, 29, 12);
+                g.fillCircle(42, 21, 15);
+                g.fillCircle(58, 29, 11);
+
+                // Olhinhos bravos cartoon
+                g.fillStyle(0xfef08a, 1);
+                g.fillCircle(35, 31, 2.5);
+                g.fillCircle(49, 31, 2.5);
+                g.lineStyle(2, 0x0f172a, 1);
+                g.lineBetween(31, 26, 38, 29);
+                g.lineBetween(53, 26, 46, 29);
+
+                g.generateTexture('obstacle_cloud', 84, 66);
+                g.destroy();
+            }
+
+            // --- 6. OBSTÁCULO: FLOCO-DRONE GELADO (`obstacle_bird`) ---
+            if (!scene.textures.exists('obstacle_bird')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                const cx = 24, cy = 24;
+
+                // Aura ciano
+                g.fillStyle(0x38bdf8, 0.28);
+                g.fillCircle(cx, cy, 22);
+
+                // 6 pontas afiadas de cristal de gelo
+                g.lineStyle(3.5, 0xe0f2fe, 1);
+                for (let i = 0; i < 6; i++) {
+                    const ang = (Math.PI / 3) * i;
+                    const x2 = cx + Math.cos(ang) * 19;
+                    const y2 = cy + Math.sin(ang) * 19;
+                    g.lineBetween(cx, cy, x2, y2);
+
+                    // Ramificações pequenas
+                    const mx = cx + Math.cos(ang) * 12;
+                    const my = cy + Math.sin(ang) * 12;
+                    g.lineStyle(2, 0x7dd3fc, 1);
+                    g.lineBetween(mx, my, mx + Math.cos(ang + 0.6) * 6, my + Math.sin(ang + 0.6) * 6);
+                    g.lineBetween(mx, my, mx + Math.cos(ang - 0.6) * 6, my + Math.sin(ang - 0.6) * 6);
+                    g.lineStyle(3.5, 0xe0f2fe, 1);
+                }
+
+                // Núcleo brilhante
+                g.fillStyle(0x0284c7, 1);
+                g.fillCircle(cx, cy, 7);
+                g.fillStyle(0xffffff, 1);
+                g.fillCircle(cx, cy, 3.5);
+
+                g.generateTexture('obstacle_bird', 48, 48);
+                g.destroy();
+            }
+
+            // --- 7. OBSTÁCULO: PINHEIRO ALTO NEVADO (`obstacle_pine`) ---
+            if (!scene.textures.exists('obstacle_pine')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                // Tronco
+                g.fillStyle(0x78350f, 1);
+                g.fillRect(23, 128, 14, 24);
+
+                // Camadas do pinheiro
+                const drawTier = (topY, halfW, h) => {
+                    g.fillStyle(0x14532d, 1);
+                    g.fillTriangle(30, topY, 30 - halfW, topY + h, 30 + halfW, topY + h);
+                    // Neve na ponta
+                    g.fillStyle(0xf8fafc, 0.9);
+                    g.fillTriangle(30, topY, 30 - halfW * 0.45, topY + h * 0.42, 30 + halfW * 0.45, topY + h * 0.42);
+                };
+
+                drawTier(80, 28, 52);
+                drawTier(44, 24, 48);
+                drawTier(14, 18, 42);
+
+                // Estrela brilhante no topo
+                g.fillStyle(0xfacc15, 1);
+                g.fillCircle(30, 12, 6);
+                g.fillStyle(0xfef9c3, 1);
+                g.fillCircle(30, 12, 3);
+
+                g.generateTexture('obstacle_pine', 60, 152);
+                g.destroy();
+            }
+
+            // --- 8. PARTÍCULAS (`star`, `snow_particle`, `smoke_particle`) ---
+            if (!scene.textures.exists('star')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                g.fillStyle(0xffffff, 1);
+                g.fillTriangle(8, 0, 11, 6, 5, 6);
+                g.fillTriangle(8, 16, 11, 10, 5, 10);
+                g.fillTriangle(0, 8, 6, 5, 6, 11);
+                g.fillTriangle(16, 8, 10, 5, 10, 11);
+                g.fillCircle(8, 8, 3.5);
+                g.generateTexture('star', 16, 16);
+                g.destroy();
+            }
+
+            if (!scene.textures.exists('snow_particle')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                g.fillStyle(0xffffff, 1);
+                g.fillCircle(6, 6, 5);
+                g.generateTexture('snow_particle', 12, 12);
+                g.destroy();
+            }
+
+            if (!scene.textures.exists('smoke_particle')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                g.fillStyle(0xffffff, 0.55);
+                g.fillCircle(12, 12, 11);
+                g.fillStyle(0xffffff, 0.8);
+                g.fillCircle(10, 10, 6);
+                g.generateTexture('smoke_particle', 24, 24);
+                g.destroy();
+            }
+
+            // --- 9. CENÁRIO PARALLAX (LUA, MONTANHAS, FLORESTA E CHÃO NEVADO) ---
+            if (!scene.textures.exists('bg_moon')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                g.fillStyle(0xfef08a, 0.12);
+                g.fillCircle(48, 48, 46);
+                g.fillStyle(0xfef08a, 0.22);
+                g.fillCircle(48, 48, 36);
+                g.fillStyle(0xfef9c3, 1);
+                g.fillCircle(48, 48, 28);
+                // Crateras suaves
+                g.fillStyle(0xfde047, 0.45);
+                g.fillCircle(39, 41, 6);
+                g.fillCircle(57, 54, 8);
+                g.fillCircle(54, 36, 4);
+                g.generateTexture('bg_moon', 96, 96);
+                g.destroy();
+            }
+
+            if (!scene.textures.exists('bg_mountains')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                const w = 450, h = 180;
+                g.fillStyle(0x162447, 1);
+                g.beginPath();
+                g.moveTo(0, h);
+                g.lineTo(0, 110);
+                g.lineTo(75, 45);
+                g.lineTo(155, 105);
+                g.lineTo(245, 25);
+                g.lineTo(340, 100);
+                g.lineTo(405, 55);
+                g.lineTo(w, 110);
+                g.lineTo(w, h);
+                g.closePath();
+                g.fillPath();
+
+                // Picos nevados sutis
+                g.fillStyle(0x3b5998, 0.45);
+                g.fillTriangle(75, 45, 52, 70, 96, 68);
+                g.fillTriangle(245, 25, 214, 58, 274, 56);
+                g.fillTriangle(405, 55, 384, 76, 424, 74);
+
+                g.generateTexture('bg_mountains', w, h);
+                g.destroy();
+            }
+
+            if (!scene.textures.exists('bg_forest')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                const w = 450, h = 110;
+                g.fillStyle(0x0f1c3a, 1);
+                g.fillRect(0, 72, w, 38);
+                for (let x = 10; x < w; x += 28) {
+                    const treeH = 38 + ((x * 17) % 30);
+                    g.fillTriangle(x, 76 - treeH, x - 16, 78, x + 16, 78);
+                }
+                g.generateTexture('bg_forest', w, h);
+                g.destroy();
+            }
+
+            if (!scene.textures.exists('ground_snow')) {
+                const g = scene.make.graphics({ x: 0, y: 0, add: false });
+                g.fillStyle(0xe2e8f0, 1);
+                g.fillRect(0, 8, 128, 42);
+                g.fillStyle(0xffffff, 1);
+                g.fillEllipse(32, 10, 72, 18);
+                g.fillEllipse(96, 10, 72, 18);
+                g.fillStyle(0xcbd5e1, 0.55);
+                g.fillEllipse(64, 30, 50, 10);
+                g.generateTexture('ground_snow', 128, 50);
+                g.destroy();
+            }
+        }
+
+        /* =====================================================================
+           4. CENA PRINCIPAL DO PHASER 3
+           ===================================================================== */
+        class NoelDeliveryScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'NoelDeliveryScene' });
+            }
+
+            preload() {
+                /*
+                 * =============================================================
+                 * COMO USAR SUAS PRÓPRIAS IMAGENS (SPRITES CUSTOMIZADOS):
+                 * =============================================================
+                 * Basta descomentar e apontar para os seus arquivos PNG!
+                 * O gerador procedural detectará automaticamente que a textura
+                 * já existe e usará a sua arte no lugar do placeholder:
+                 *
+                 * this.load.image('santa_sleigh', 'assets/papai_noel.png');
+                 * this.load.image('pizza_box', 'assets/caixa_pizza.png');
+                 * this.load.image('house_1', 'assets/casa_1.png');
+                 * this.load.image('house_2', 'assets/casa_2.png');
+                 * this.load.image('chimney', 'assets/chamine.png');
+                 * this.load.image('obstacle_cloud', 'assets/nuvem.png');
+                 * this.load.image('obstacle_bird', 'assets/floco_drone.png');
+                 * this.load.image('star', 'assets/estrela.png');
+                 * this.load.image('snow_particle', 'assets/neve.png');
+                 * =============================================================
+                 */
+            }
+
+            create() {
+                gameBridge.scene = this;
+
+                const W = this.scale.width;
+                const H = this.scale.height;
+                this.W = W;
+                this.H = H;
+                this.groundY = H - 34;
+
+                // Gera texturas vetoriais caso não tenham sido carregadas imagens customizadas
+                generateProceduralTextures(this);
+
+                // Estado do jogo
+                this.gameState = 'TITLE'; // 'TITLE' | 'PLAYING' | 'PAUSED' | 'GAMEOVER'
+                this.score = 0;
+                this.pizzasDelivered = 0;
+                this.combo = 0;
+                this.bestCombo = 0;
+                this.lives = 3;
+                this.isInvincible = false;
+                this.scrollSpeed = 165;
+                this.lastPizzaTime = 0;
+                this.pizzaCooldownMs = 250;
+                this.nextHouseX = W + 60;
+                this.obstacleTimer = 0;
+                this.elapsedPlayTime = 0;
+
+                // --- 1. CÉU NOTURNO COM GRADIENTE ---
+                const sky = this.add.graphics();
+                sky.fillGradientStyle(0x070d26, 0x070d26, 0x1e3264, 0x1e3264, 1);
+                sky.fillRect(0, 0, W, H);
+                sky.setDepth(0);
+
+                // Estrelas cintilantes no fundo
+                this.bgStars = [];
+                for (let i = 0; i < 36; i++) {
+                    const sx = Phaser.Math.Between(12, W - 12);
+                    const sy = Phaser.Math.Between(14, H * 0.56);
+                    const starImg = this.add.image(sx, sy, 'star')
+                        .setScale(Phaser.Math.FloatBetween(0.22, 0.55))
+                        .setAlpha(Phaser.Math.FloatBetween(0.25, 0.9))
+                        .setDepth(1);
+                    this.bgStars.push({
+                        sprite: starImg,
+                        speed: Phaser.Math.FloatBetween(0.002, 0.005),
+                        phase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+                    });
+                }
+
+                // Lua cheia brilhante
+                this.moon = this.add.image(W - 76, 108, 'bg_moon').setDepth(2);
+
+                // Montanhas nevadas distantes (Parallax lento)
+                this.mountains = this.add.tileSprite(W / 2, this.groundY - 76, W, 180, 'bg_mountains').setDepth(3);
+
+                // Floresta de pinheiros ao fundo (Parallax médio)
+                this.forest = this.add.tileSprite(W / 2, this.groundY - 46, W, 110, 'bg_forest').setDepth(4);
+
+                // Neve caindo suavemente pelo cenário
+                this.snowEmitter = this.add.particles(0, 0, 'snow_particle', {
+                    x: { min: 0, max: W + 80 },
+                    y: -10,
+                    lifespan: 6200,
+                    speedY: { min: 40, max: 95 },
+                    speedX: { min: -55, max: -20 },
+                    scale: { start: 0.55, end: 0.2 },
+                    alpha: { start: 0.75, end: 0.15 },
+                    frequency: 90,
+                    quantity: 1
+                }).setDepth(15);
+
+                // --- 2. GRUPOS DE FÍSICA ---
+                this.housesGroup = this.add.group();
+                this.chimneysGroup = this.physics.add.group({ allowGravity: false, immovable: true });
+                this.pizzasGroup = this.physics.add.group();
+                this.obstaclesGroup = this.physics.add.group({ allowGravity: false });
+
+                // Chão nevado em primeiro plano
+                this.groundTile = this.add.tileSprite(W / 2, H - 22, W, 50, 'ground_snow').setDepth(9);
+
+                // Popula algumas casas iniciais na tela de título para o cenário já nascer vivo
+                this.seedInitialHouses();
+
+                // --- 3. PAPAI NOEL & TRENÓ ---
+                this.santa = this.physics.add.sprite(102, 235, 'santa_sleigh').setDepth(12);
+                this.santa.body.setAllowGravity(false);
+                // Hitbox justa e ligeiramente generosa para desviar de obstáculos com diversão
+                this.santa.body.setSize(58, 30);
+                this.santa.body.setOffset(16, 18);
+
+                // Trilha mágica dourada atrás do trenó
+                this.sleighTrail = this.add.particles(0, 0, 'star', {
+                    follow: this.santa,
+                    followOffset: { x: -38, y: 12 },
+                    speedX: { min: -90, max: -40 },
+                    speedY: { min: -15, max: 20 },
+                    scale: { start: 0.45, end: 0 },
+                    alpha: { start: 0.85, end: 0 },
+                    tint: [0xfde047, 0xfb923c, 0xffffff],
+                    lifespan: 450,
+                    frequency: 55
+                }).setDepth(11);
+
+                // Emissor de fumaça de chaminé / explosões
+                this.confettiEmitter = this.add.particles(0, 0, 'star', {
+                    speed: { min: 70, max: 210 },
+                    angle: { min: 200, max: 340 },
+                    gravityY: 260,
+                    scale: { start: 0.9, end: 0 },
+                    alpha: { start: 1, end: 0 },
+                    tint: [0xef4444, 0x22c55e, 0xfacc15, 0xffffff],
+                    lifespan: 750,
+                    emitting: false
+                }).setDepth(16);
+
+                this.snowPuffEmitter = this.add.particles(0, 0, 'snow_particle', {
+                    speed: { min: 30, max: 110 },
+                    angle: { min: 190, max: 350 },
+                    gravityY: 180,
+                    scale: { start: 0.95, end: 0 },
+                    alpha: { start: 0.9, end: 0 },
+                    lifespan: 450,
+                    emitting: false
+                }).setDepth(16);
+
+                // --- 4. COLISÕES & OVERLAPS ---
+                this.physics.add.overlap(
+                    this.pizzasGroup,
+                    this.chimneysGroup,
+                    this.handlePizzaChimneyDelivery,
+                    null,
+                    this
+                );
+
+                this.physics.add.overlap(
+                    this.santa,
+                    this.obstaclesGroup,
+                    this.handleSantaObstacleHit,
+                    null,
+                    this
+                );
+
+                // --- 5. CONTROLES DE TECLADO ---
+                this.keys = this.input.keyboard.addKeys({
+                    space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+                    up: Phaser.Input.Keyboard.KeyCodes.UP,
+                    w: Phaser.Input.Keyboard.KeyCodes.W,
+                    enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
+                    right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+                    f: Phaser.Input.Keyboard.KeyCodes.F,
+                    e: Phaser.Input.Keyboard.KeyCodes.E,
+                    p: Phaser.Input.Keyboard.KeyCodes.P
+                });
+
+                this.input.keyboard.on('keydown-ENTER', () => this.tryThrowPizza());
+                this.input.keyboard.on('keydown-RIGHT', () => this.tryThrowPizza());
+                this.input.keyboard.on('keydown-F', () => this.tryThrowPizza());
+                this.input.keyboard.on('keydown-E', () => this.tryThrowPizza());
+                this.input.keyboard.on('keydown-P', () => this.togglePause());
+
+                // Toque direto no canvas também funciona como atalho intuitivo:
+                // metade esquerda = voar, metade direita = lançar pizza
+                this.canvasFlyPointerId = null;
+                this.input.on('pointerdown', (pointer) => {
+                    soundFX.unlock();
+                    if (this.gameState !== 'PLAYING') return;
+                    if (pointer.x < this.W * 0.5) {
+                        this.canvasFlyPointerId = pointer.id;
+                        gameBridge.isFlyHeld = true;
+                        ui.btnFly.classList.add('pressed');
+                    } else {
+                        this.tryThrowPizza();
+                    }
+                });
+
+                this.input.on('pointerup', (pointer) => {
+                    if (pointer.id === this.canvasFlyPointerId) {
+                        this.canvasFlyPointerId = null;
+                        gameBridge.isFlyHeld = false;
+                        ui.btnFly.classList.remove('pressed');
+                    }
+                });
+
+                updateHUD(0, 0, 0, 3);
+            }
+
+            /** Popula algumas casas no horizonte inicial */
+            seedInitialHouses() {
+                this.nextHouseX = 110;
+                while (this.nextHouseX < this.W + 180) {
+                    this.spawnHouse(this.nextHouseX, false);
+                }
+            }
+
+            /** Inicia ou reinicia uma nova partida */
+            startGame() {
+                soundFX.unlock();
+
+                // Limpa entidades anteriores
+                this.clearDynamicEntities();
+
+                this.gameState = 'PLAYING';
+                this.score = 0;
+                this.pizzasDelivered = 0;
+                this.combo = 0;
+                this.bestCombo = 0;
+                this.lives = 3;
+                this.isInvincible = false;
+                this.scrollSpeed = 165;
+                this.elapsedPlayTime = 0;
+                this.obstacleTimer = 1700; // Período de graça inicial de 1.7s
+                this.lastPizzaTime = 0;
+                gameBridge.isFlyHeld = false;
+
+                // Reseta o trenó
+                this.santa.setPosition(102, 220);
+                this.santa.setAngle(0);
+                this.santa.setAlpha(1);
+                this.santa.body.setAllowGravity(true);
+                this.santa.body.setGravityY(680);
+                this.santa.body.setVelocity(0, -80);
+
+                // Repopula casas
+                this.seedInitialHouses();
+
+                // Atualiza HUD e esconde overlays
+                updateHUD(this.score, this.pizzasDelivered, this.combo, this.lives);
+                ui.titleOverlay.classList.add('hidden');
+                ui.pauseOverlay.classList.add('hidden');
+                ui.gameoverOverlay.classList.add('hidden');
+
+                this.physics.resume();
+                this.sleighTrail.start();
+            }
+
+            togglePause() {
+                if (this.gameState === 'PLAYING') {
+                    this.gameState = 'PAUSED';
+                    this.physics.pause();
+                    gameBridge.isFlyHeld = false;
+                    ui.btnFly.classList.remove('pressed');
+                    ui.pauseOverlay.classList.remove('hidden');
+                } else if (this.gameState === 'PAUSED') {
+                    this.gameState = 'PLAYING';
+                    this.physics.resume();
+                    ui.pauseOverlay.classList.add('hidden');
+                }
+            }
+
+            clearDynamicEntities() {
+                // Remove fumaça e badges presos às chaminés antes de destruir
+                this.chimneysGroup.getChildren().slice().forEach((ch) => {
+                    this.destroyChimneyExtras(ch);
+                    ch.destroy();
+                });
+                this.housesGroup.clear(true, true);
+                this.pizzasGroup.clear(true, true);
+                this.obstaclesGroup.clear(true, true);
+            }
+
+            destroyChimneyExtras(chimney) {
+                if (chimney.smokeEmitter) {
+                    chimney.smokeEmitter.destroy();
+                    chimney.smokeEmitter = null;
+                }
+                if (chimney.vipLabel) {
+                    chimney.vipLabel.destroy();
+                    chimney.vipLabel = null;
+                }
+                if (chimney.glowRing) {
+                    chimney.glowRing.destroy();
+                    chimney.glowRing = null;
+                }
+            }
+
+            /** Cria uma casa natalina com chaminé alvo (normal ou VIP dourada) */
+            spawnHouse(startX, allowVip = true) {
+                const houseKeys = ['house_1', 'house_2', 'house_3'];
+                const key = Phaser.Utils.Array.GetRandom(houseKeys);
+                const house = this.add.image(startX, this.groundY + 6, key)
+                    .setOrigin(0.5, 1)
+                    .setDepth(6);
+                this.housesGroup.add(house);
+
+                const isVip = allowVip && Phaser.Math.FloatBetween(0, 1) < 0.22;
+                const chimneyOffsetX = Phaser.Math.Between(-24, 24);
+                const chimneyX = startX + chimneyOffsetX;
+                const chimneyY = house.y - house.displayHeight + 16;
+
+                const chimneyKey = isVip ? 'chimney_vip' : 'chimney';
+                const chimney = this.chimneysGroup.create(chimneyX, chimneyY, chimneyKey)
+                    .setOrigin(0.5, 0.5)
+                    .setDepth(7);
+
+                // Hitbox generosa na boca da chaminé para jogabilidade divertida e justa
+                chimney.body.setSize(52, 42);
+                chimney.body.setOffset(-4, -8);
+
+                chimney.delivered = false;
+                chimney.isVip = isVip;
+
+                // Indicador luminoso pulsante na boca da chaminé
+                chimney.glowRing = this.add.circle(
+                    chimneyX,
+                    chimneyY - 14,
+                    isVip ? 16 : 12,
+                    isVip ? 0xfacc15 : 0xfb923c,
+                    isVip ? 0.45 : 0.28
+                ).setDepth(8);
+
+                // Fumaça quentinha subindo da chaminé alvo
+                chimney.smokeEmitter = this.add.particles(0, 0, 'smoke_particle', {
+                    follow: chimney,
+                    followOffset: { x: 0, y: -18 },
+                    speedY: { min: -42, max: -22 },
+                    speedX: { min: -28, max: -8 },
+                    scale: { start: 0.35, end: 1.0 },
+                    alpha: { start: 0.65, end: 0 },
+                    tint: isVip ? [0xfef08a, 0xfacc15] : [0xffffff, 0xffedd5],
+                    lifespan: 1050,
+                    frequency: isVip ? 130 : 210
+                }).setDepth(8);
+
+                // Selo "VIP 2x" para casas douradas
+                if (isVip) {
+                    chimney.vipLabel = this.add.text(chimneyX, chimneyY - 36, '★ VIP 2x', {
+                        fontFamily: 'Fredoka, sans-serif',
+                        fontSize: '13px',
+                        fontStyle: 'bold',
+                        color: '#fef08a',
+                        stroke: '#78350f',
+                        strokeThickness: 4
+                    }).setOrigin(0.5).setDepth(10);
+                }
+
+                // Espaço até a próxima casa (varia naturalmente para ritmo agradável)
+                const gap = Phaser.Math.Between(165, 245);
+                this.nextHouseX = startX + gap;
+
+                // Ocasionalmente planta um pinheiro alto nevado entre as casas como obstáculo baixo
+                if (allowVip && this.gameState === 'PLAYING' && gap >= 210 && Phaser.Math.FloatBetween(0, 1) < 0.34) {
+                    const pineX = startX + gap * 0.5;
+                    const pine = this.obstaclesGroup.create(pineX, this.groundY + 8, 'obstacle_pine')
+                        .setOrigin(0.5, 1)
+                        .setDepth(8);
+                    pine.obstacleType = 'pine';
+                    // Hitbox justa concentrada no corpo do pinheiro
+                    pine.body.setSize(28, 108);
+                    pine.body.setOffset(16, 26);
+                }
+            }
+
+            /** Gera obstáculos no céu (nuvem de tempestade ou floco-drone giratório) */
+            spawnSkyObstacle() {
+                const isDrone = Phaser.Math.FloatBetween(0, 1) < 0.45;
+                const spawnX = this.W + 55;
+                // Faixa segura acima das casas e abaixo do HUD superior
+                const minY = 92;
+                const maxY = this.groundY - 195;
+                const spawnY = Phaser.Math.Between(minY, maxY);
+
+                if (isDrone) {
+                    const drone = this.obstaclesGroup.create(spawnX, spawnY, 'obstacle_bird').setDepth(11);
+                    drone.obstacleType = 'drone';
+                    drone.baseY = spawnY;
+                    drone.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
+                    drone.extraSpeed = Phaser.Math.Between(35, 75);
+                    drone.body.setCircle(15, 9, 9);
+                } else {
+                    const cloud = this.obstaclesGroup.create(spawnX, spawnY, 'obstacle_cloud').setDepth(11);
+                    cloud.obstacleType = 'cloud';
+                    cloud.baseY = spawnY;
+                    cloud.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
+                    cloud.extraSpeed = Phaser.Math.Between(5, 25);
+                    // Hitbox justa (exclui as beiradas mais finas da nuvem)
+                    cloud.body.setSize(52, 34);
+                    cloud.body.setOffset(16, 16);
+                }
+            }
+
+            /** Lança uma caixa de pizza girando em arco para frente */
+            tryThrowPizza() {
+                if (this.gameState !== 'PLAYING') return;
+
+                const now = this.time.now;
+                if (now - this.lastPizzaTime < this.pizzaCooldownMs) return;
+                this.lastPizzaTime = now;
+
+                soundFX.playToss();
+
+                // Animação rápida da barra de recarga no botão
+                this.animatePizzaCooldown();
+
+                const pizza = this.pizzasGroup.create(this.santa.x + 14, this.santa.y + 18, 'pizza_box')
+                    .setDepth(11);
+                pizza.body.setGravityY(740);
+                // Arco suave para frente acompanhando o embalo do trenó
+                pizza.body.setVelocity(140, -55);
+                pizza.body.setAngularVelocity(340);
+                pizza.body.setSize(28, 22);
+            }
+
+            animatePizzaCooldown() {
+                ui.pizzaCooldownBar.style.transition = 'none';
+                ui.pizzaCooldownBar.style.width = '100%';
+                requestAnimationFrame(() => {
+                    ui.pizzaCooldownBar.style.transition = `width ${this.pizzaCooldownMs}ms linear`;
+                    ui.pizzaCooldownBar.style.width = '0%';
+                });
+            }
+
+            /** Entrega bem-sucedida de pizza na chaminé! */
+            handlePizzaChimneyDelivery(pizza, chimney) {
+                if (!pizza.active || !chimney.active || chimney.delivered) return;
+
+                chimney.delivered = true;
+                pizza.destroy();
+
+                // Atualiza chaminé para iluminada verde-dourada
+                chimney.setTexture('chimney_done');
+                this.destroyChimneyExtras(chimney);
+
+                // Atualiza placar e combo
+                this.pizzasDelivered += 1;
+                this.combo += 1;
+                if (this.combo > this.bestCombo) {
+                    this.bestCombo = this.combo;
+                }
+
+                const basePts = chimney.isVip ? 200 : 100;
+                const comboBonus = this.combo >= 2 ? (this.combo - 1) * 25 : 0;
+                const gained = basePts + comboBonus;
+                this.score += gained;
+
+                // Dificuldade progressiva suave conforme as entregas aumentam
+                this.scrollSpeed = Math.min(315, 165 + this.pizzasDelivered * 4.2);
+
+                soundFX.playDelivery(this.combo, chimney.isVip);
+
+                // Partículas festivas de estrelas/confete
+                this.confettiEmitter.explode(chimney.isVip ? 26 : 16, chimney.x, chimney.y - 12);
+
+                // Pequeno "pulo" comemorativo na chaminé
+                this.tweens.add({
+                    targets: chimney,
+                    scaleX: 1.25,
+                    scaleY: 0.85,
+                    duration: 100,
+                    yoyo: true,
+                    ease: 'Quad.easeOut'
+                });
+
+                // Texto flutuante da pontuação
+                const labelText = chimney.isVip ? `+${gained} VIP!` : `+${gained}`;
+                this.spawnFloatingText(
+                    chimney.x,
+                    chimney.y - 28,
+                    labelText,
+                    chimney.isVip ? '#fde047' : '#86efac',
+                    chimney.isVip ? 22 : 19
+                );
+
+                // Texto flutuante de COMBO
+                if (this.combo >= 2) {
+                    this.spawnFloatingText(
+                        chimney.x,
+                        chimney.y - 54,
+                        `COMBO x${this.combo}!`,
+                        '#fb923c',
+                        16
+                    );
+                }
+
+                updateHUD(this.score, this.pizzasDelivered, this.combo, this.lives);
+            }
+
+            /** Colisão do Papai Noel com obstáculo */
+            handleSantaObstacleHit(santa, obstacle) {
+                if (this.gameState !== 'PLAYING' || this.isInvincible || !obstacle.active) return;
+
+                this.lives -= 1;
+                this.combo = 0;
+                this.isInvincible = true;
+
+                soundFX.playHit();
+                this.cameras.main.shake(220, 0.014);
+                this.snowPuffEmitter.explode(14, santa.x + 12, santa.y);
+
+                // Destrói obstáculos voadores ao colidir para evitar sensação de travamento
+                if (obstacle.obstacleType !== 'pine') {
+                    obstacle.destroy();
+                }
+
+                updateHUD(this.score, this.pizzasDelivered, this.combo, this.lives);
+
+                if (this.lives <= 0) {
+                    this.triggerGameOver();
+                    return;
+                }
+
+                // Pisca o trenó por 1,5 segundo indicando invencibilidade temporária
+                this.tweens.add({
+                    targets: this.santa,
+                    alpha: 0.25,
+                    duration: 105,
+                    repeat: 13,
+                    yoyo: true,
+                    onComplete: () => {
+                        if (this.santa && this.santa.active) {
+                            this.santa.setAlpha(1);
+                        }
+                        this.isInvincible = false;
+                    }
+                });
+            }
+
+            /** Encerra a partida e exibe a tela de Game Over */
+            triggerGameOver() {
+                this.gameState = 'GAMEOVER';
+                gameBridge.isFlyHeld = false;
+                ui.btnFly.classList.remove('pressed');
+
+                soundFX.playGameOver();
+                this.sleighTrail.stop();
+                this.physics.pause();
+
+                this.time.delayedCall(350, () => {
+                    showGameOverScreen(this.score, this.pizzasDelivered, this.bestCombo);
+                });
+            }
+
+            /** Cria texto animado que sobe e desaparece */
+            spawnFloatingText(x, y, message, color, fontSize) {
+                const txt = this.add.text(x, y, message, {
+                    fontFamily: 'Fredoka, sans-serif',
+                    fontSize: `${fontSize}px`,
+                    fontStyle: 'bold',
+                    color: color,
+                    stroke: '#0f172a',
+                    strokeThickness: 5
+                }).setOrigin(0.5).setDepth(18);
+
+                this.tweens.add({
+                    targets: txt,
+                    y: y - 54,
+                    alpha: 0,
+                    scale: 1.12,
+                    duration: 850,
+                    ease: 'Cubic.easeOut',
+                    onComplete: () => txt.destroy()
+                });
+            }
+
+            update(time, delta) {
+                const dt = Math.min(delta, 40) / 1000;
+
+                // Cintilação constante das estrelas do céu
+                for (let i = 0; i < this.bgStars.length; i++) {
+                    const s = this.bgStars[i];
+                    s.sprite.setAlpha(0.3 + 0.6 * (0.5 + 0.5 * Math.sin(time * s.speed + s.phase)));
+                }
+
+                // Animação gentil na tela inicial
+                if (this.gameState === 'TITLE') {
+                    this.santa.y = 225 + Math.sin(time * 0.003) * 14;
+                    this.santa.angle = Math.cos(time * 0.003) * 4;
+                    this.mountains.tilePositionX += 14 * dt;
+                    this.forest.tilePositionX += 32 * dt;
+                    this.groundTile.tilePositionX += 70 * dt;
+                    return;
+                }
+
+                if (this.gameState !== 'PLAYING') return;
+
+                this.elapsedPlayTime += dt;
+
+                // --- 1. MOVIMENTO DE PARALLAX ---
+                const speed = this.scrollSpeed;
+                this.mountains.tilePositionX += speed * 0.14 * dt;
+                this.forest.tilePositionX += speed * 0.34 * dt;
+                this.groundTile.tilePositionX += speed * dt;
+
+                // --- 2. CONTROLE DE VOO DO TRENÓ ---
+                const flyKeyboard = this.keys.space.isDown || this.keys.up.isDown || this.keys.w.isDown;
+                const isFlying = gameBridge.isFlyHeld || flyKeyboard;
+
+                if (isFlying) {
+                    // Impulso suave para cima
+                    this.santa.body.setAccelerationY(-1420);
+                    if (this.santa.body.velocity.y < -280) {
+                        this.santa.body.setVelocityY(-280);
+                    }
+                    soundFX.playThrust();
+                } else {
+                    this.santa.body.setAccelerationY(0);
+                    if (this.santa.body.velocity.y > 350) {
+                        this.santa.body.setVelocityY(350);
+                    }
+                }
+
+                // Limites verticais seguros (teto do céu e acima dos telhados)
+                const minY = 66;
+                const maxY = this.groundY - 122;
+                if (this.santa.y < minY) {
+                    this.santa.y = minY;
+                    if (this.santa.body.velocity.y < 0) this.santa.body.setVelocityY(0);
+                } else if (this.santa.y > maxY) {
+                    this.santa.y = maxY;
+                    if (this.santa.body.velocity.y > 0) this.santa.body.setVelocityY(0);
+                }
+
+                // Inclinação suave do trenó conforme velocidade vertical
+                const targetAngle = Phaser.Math.Clamp(this.santa.body.velocity.y * 0.06, -18, 20);
+                this.santa.angle = Phaser.Math.Linear(this.santa.angle, targetAngle, 0.16);
+
+                // --- 3. MOVIMENTAÇÃO E SPAWN DE CASAS & CHAMINÉS ---
+                const moveDx = speed * dt;
+                this.nextHouseX -= moveDx;
+                if (this.nextHouseX < this.W + 130) {
+                    this.spawnHouse(this.nextHouseX, true);
+                }
+
+                this.housesGroup.getChildren().slice().forEach((house) => {
+                    house.x -= moveDx;
+                    if (house.x < -120) {
+                        house.destroy();
+                    }
+                });
+
+                this.chimneysGroup.getChildren().slice().forEach((chimney) => {
+                    chimney.x -= moveDx;
+                    chimney.body.updateFromGameObject();
+
+                    if (chimney.glowRing) {
+                        chimney.glowRing.x = chimney.x;
+                        const pulse = 0.85 + 0.25 * Math.sin(time * 0.008);
+                        chimney.glowRing.setScale(pulse);
+                    }
+                    if (chimney.vipLabel) {
+                        chimney.vipLabel.x = chimney.x;
+                        chimney.vipLabel.y = chimney.y - 36 + Math.sin(time * 0.007) * 3;
+                    }
+
+                    if (chimney.x < -80) {
+                        this.destroyChimneyExtras(chimney);
+                        chimney.destroy();
+                    }
+                });
+
+                // --- 4. OBSTÁCULOS DO CÉU & DIFICULDADE PROGRESSIVA ---
+                this.obstacleTimer -= delta;
+                if (this.obstacleTimer <= 0) {
+                    this.spawnSkyObstacle();
+                    // Intervalo reduz suavemente conforme a pontuação e tempo avançam
+                    const difficultyFactor = Math.min(1, this.pizzasDelivered / 30);
+                    const minDelay = Phaser.Math.Linear(1450, 760, difficultyFactor);
+                    const maxDelay = Phaser.Math.Linear(2300, 1280, difficultyFactor);
+                    this.obstacleTimer = Phaser.Math.Between(minDelay, maxDelay);
+                }
+
+                this.obstaclesGroup.getChildren().slice().forEach((obs) => {
+                    if (obs.obstacleType === 'pine') {
+                        obs.x -= moveDx;
+                    } else if (obs.obstacleType === 'drone') {
+                        obs.x -= (speed + obs.extraSpeed) * dt;
+                        obs.y = obs.baseY + Math.sin(time * 0.0045 + obs.waveOffset) * 24;
+                        obs.angle += 200 * dt;
+                    } else {
+                        obs.x -= (speed + obs.extraSpeed) * dt;
+                        obs.y = obs.baseY + Math.sin(time * 0.003 + obs.waveOffset) * 10;
+                    }
+                    obs.body.updateFromGameObject();
+
+                    if (obs.x < -90) {
+                        obs.destroy();
+                    }
+                });
+
+                // --- 5. CAIXAS DE PIZZA (VERIFICAÇÃO DE QUEDA NA NEVE) ---
+                this.pizzasGroup.getChildren().slice().forEach((pizza) => {
+                    if (pizza.y >= this.groundY - 4) {
+                        // Errou a chaminé: espatifa suavemente na neve e reseta o combo
+                        this.snowPuffEmitter.explode(10, pizza.x, this.groundY - 4);
+                        soundFX.playMiss();
+                        if (this.combo > 0) {
+                            this.combo = 0;
+                            updateHUD(this.score, this.pizzasDelivered, this.combo, this.lives);
+                        }
+                        pizza.destroy();
+                    } else if (pizza.x > this.W + 50 || pizza.x < -50) {
+                        pizza.destroy();
+                    }
+                });
+            }
+        }
+
+        /* =====================================================================
+           5. INICIALIZAÇÃO DO PHASER 3
+           ===================================================================== */
+        const phaserConfig = {
+            type: Phaser.AUTO,
+            parent: 'phaser-container',
+            width: 450,
+            height: 680,
+            backgroundColor: '#070d26',
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false
+                }
+            },
+            scene: [NoelDeliveryScene]
+        };
+
+        window.addEventListener('load', () => {
+            new Phaser.Game(phaserConfig);
+        });
+
+        /* =====================================================================
+           6. EVENTOS DOS BOTÕES TÁTEIS E INTERFACE (MULTITOUCH READY)
+           ===================================================================== */
+        // Botão VOAR (segurar) — pointer events permitem segurar enquanto toca no outro botão
+        const setFlyState = (pressed) => {
+            gameBridge.isFlyHeld = pressed;
+            if (pressed) {
+                soundFX.unlock();
+                ui.btnFly.classList.add('pressed');
+            } else {
+                ui.btnFly.classList.remove('pressed');
+            }
+        };
+
+        ui.btnFly.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            try { ui.btnFly.setPointerCapture(e.pointerId); } catch (_) {}
+            setFlyState(true);
+        });
+
+        ui.btnFly.addEventListener('pointerup', (e) => {
+            e.preventDefault();
+            setFlyState(false);
+        });
+
+        ui.btnFly.addEventListener('pointercancel', () => setFlyState(false));
+        ui.btnFly.addEventListener('lostpointercapture', () => setFlyState(false));
+
+        // Botão LANÇAR PIZZA (toque rápido)
+        ui.btnPizza.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            soundFX.unlock();
+            ui.btnPizza.classList.add('pressed');
+            if (gameBridge.scene) {
+                gameBridge.scene.tryThrowPizza();
+            }
+        });
+
+        const releasePizzaVisual = () => ui.btnPizza.classList.remove('pressed');
+        ui.btnPizza.addEventListener('pointerup', releasePizzaVisual);
+        ui.btnPizza.addEventListener('pointerleave', releasePizzaVisual);
+        ui.btnPizza.addEventListener('pointercancel', releasePizzaVisual);
+
+        // Botões das telas (Jogar, Tentar Novamente, Pausa, Som)
+        ui.btnStart.addEventListener('click', () => {
+            soundFX.unlock();
+            soundFX.playClick();
+            if (gameBridge.scene) gameBridge.scene.startGame();
+        });
+
+        ui.btnRetry.addEventListener('click', () => {
+            soundFX.unlock();
+            soundFX.playClick();
+            if (gameBridge.scene) gameBridge.scene.startGame();
+        });
+
+        ui.btnPause.addEventListener('click', () => {
+            soundFX.unlock();
+            soundFX.playClick();
+            if (gameBridge.scene) gameBridge.scene.togglePause();
+        });
+
+        ui.btnResume.addEventListener('click', () => {
+            soundFX.unlock();
+            soundFX.playClick();
+            if (gameBridge.scene) gameBridge.scene.togglePause();
+        });
+
+        ui.btnRestartPause.addEventListener('click', () => {
+            soundFX.unlock();
+            soundFX.playClick();
+            if (gameBridge.scene) gameBridge.scene.startGame();
+        });
+
+        ui.btnMute.addEventListener('click', () => {
+            soundFX.unlock();
+            soundFX.toggleMute();
+            syncMuteIcon();
+            soundFX.playClick();
+        });
+
+        // Evita menu de contexto ao segurar botão no celular
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+    })();
+    </script>
+</body>
+</html>
