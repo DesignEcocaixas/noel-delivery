@@ -150,6 +150,27 @@ class SoundFX {
         } catch (e) { }
     }
 
+    playHeal() {
+        if (this.muted || !this.ctx) return;
+        try {
+            const now = this.ctx.currentTime;
+            [440, 554.37, 659.25, 880, 1108.73].forEach((freq, i) => {
+                const t = now + i * 0.055;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, t);
+                gain.gain.setValueAtTime(0.001, t);
+                gain.gain.linearRampToValueAtTime(0.11, t + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.27);
+            });
+        } catch (e) { }
+    }
+
     playMiss() {
         if (this.muted || !this.ctx) return;
         try {
@@ -263,9 +284,45 @@ const soundFX = new SoundFX();
    ===================================================================== */
 const MAX_AMMO = 10;
 const REFILL_AMOUNT = 4;
+const MAX_LIVES = 3;
 const CHIMNEY_TEX_W = 44;
 const CHIMNEY_TEX_H = 56;
 const STORAGE_HIGHSCORE_KEY = 'noel_delivery_highscore_v5';
+
+const STORAGE_RANKING_KEY = 'noel_delivery_ranking_v1';
+const STORAGE_LAST_PLAYER_KEY = 'noel_delivery_last_player_v1';
+const STORAGE_SELECTED_CHAR_KEY = 'noel_delivery_selected_char_v1';
+
+const DEFAULT_CHARACTER = {
+    id: 'santa_default',
+    name: 'Papai Noel',
+    subtitle: 'Trenó Clássico (Padrão)',
+    textureKey: 'santa_sleigh',
+    imgSrc: null,
+    emoji: '🎅',
+    maxW: 92,
+    maxH: 58
+};
+
+function buildCharacterCatalog() {
+    const customList = Array.isArray(window.NOEL_PERSONAGENS) ? window.NOEL_PERSONAGENS : [];
+    const normalized = customList
+        .filter((item) => item && item.id && item.imgSrc)
+        .map((item) => ({
+            id: String(item.id).trim(),
+            name: item.name || item.id,
+            subtitle: item.subtitle || 'Pizzaria Parceira',
+            textureKey: item.textureKey || `char_${String(item.id).trim()}`,
+            imgSrc: item.imgSrc,
+            emoji: item.emoji || '🍕',
+            maxW: item.maxW || 92,
+            maxH: item.maxH || 66
+        }));
+
+    return [DEFAULT_CHARACTER, ...normalized];
+}
+
+const CHARACTER_CATALOG = buildCharacterCatalog();
 
 /**
  * Catálogo das 6 casas com coordenadas exatas da chaminé:
@@ -559,9 +616,10 @@ function sampleSkyPalette(progress) {
 }
 
 /* =====================================================================
-   4. PONTE ENTRE DOM (HUD / CONTROLES MULTITOUCH) E PHASER
+   4. PONTE ENTRE DOM (HUD / MENU / RANKING / SLIDER / CONTROLES) E PHASER
    ===================================================================== */
 const ui = {
+    hudPlayerName: document.getElementById('hud-player-name'),
     hudScore: document.getElementById('hud-score'),
     hearts: Array.from(document.querySelectorAll('.heart-icon')),
     hudPhaseLabel: document.getElementById('hud-phase-label'),
@@ -580,6 +638,24 @@ const ui = {
     pauseOverlay: document.getElementById('pause-overlay'),
     gameoverOverlay: document.getElementById('gameover-overlay'),
     titleHighscore: document.getElementById('title-highscore'),
+    rankingPlayersBadge: document.getElementById('ranking-players-badge'),
+    titleRankingList: document.getElementById('title-ranking-list'),
+    goRankingList: document.getElementById('go-ranking-list'),
+    playerNameInput: document.getElementById('player-name-input'),
+    btnCharPrev: document.getElementById('btn-char-prev'),
+    btnCharNext: document.getElementById('btn-char-next'),
+    charSliderStage: document.getElementById('char-slider-stage'),
+    charPreviewImg: document.getElementById('char-preview-img'),
+    charPreviewFallback: document.getElementById('char-preview-fallback'),
+    charName: document.getElementById('char-name'),
+    charSubtitle: document.getElementById('char-subtitle'),
+    charCounter: document.getElementById('char-counter'),
+    btnCharGrid: document.getElementById('btn-char-grid'),
+    charModalOverlay: document.getElementById('char-modal-overlay'),
+    btnCharModalClose: document.getElementById('btn-char-modal-close'),
+    charSearchInput: document.getElementById('char-search-input'),
+    charGridList: document.getElementById('char-grid-list'),
+    goPlayerTag: document.getElementById('go-player-tag'),
     goScore: document.getElementById('go-score'),
     goHighscore: document.getElementById('go-highscore'),
     goPizzas: document.getElementById('go-pizzas'),
@@ -589,7 +665,9 @@ const ui = {
     btnStart: document.getElementById('btn-start'),
     btnResume: document.getElementById('btn-resume'),
     btnPauseRestart: document.getElementById('btn-pause-restart'),
+    btnPauseMenu: document.getElementById('btn-pause-menu'),
     btnRestart: document.getElementById('btn-restart'),
+    btnGoMenu: document.getElementById('btn-go-menu'),
     btnPause: document.getElementById('btn-pause'),
     btnMute: document.getElementById('btn-mute'),
     iconSoundOn: document.getElementById('icon-sound-on'),
@@ -606,34 +684,330 @@ const gameBridge = {
     activeFlyPointers: new Set(),
     bannerTimeout: null,
     highScore: 0,
+    ranking: [],
+    currentPlayerName: '',
+    selectedCharIndex: 0,
+    santaPreviewDataUrl: null,
 
-    loadHighScore() {
+    initStorage() {
+        try {
+            const savedName = localStorage.getItem(STORAGE_LAST_PLAYER_KEY) || '';
+            this.currentPlayerName = savedName.trim().slice(0, 16);
+            if (ui.playerNameInput) ui.playerNameInput.value = this.currentPlayerName;
+        } catch (e) { }
+
+        // Prioriza ?pizzaria=id na URL; caso contrário, usa o último salvo no celular
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlId = (urlParams.get('pizzaria') || '').trim().toLowerCase();
+            const savedCharId = localStorage.getItem(STORAGE_SELECTED_CHAR_KEY);
+            const targetId = urlId || savedCharId;
+            const idx = CHARACTER_CATALOG.findIndex((c) => c.id.toLowerCase() === (targetId || '').toLowerCase());
+            this.selectedCharIndex = idx >= 0 ? idx : 0;
+        } catch (e) {
+            this.selectedCharIndex = 0;
+        }
+
+        let legacyHigh = 0;
         try {
             const saved = parseInt(localStorage.getItem(STORAGE_HIGHSCORE_KEY) || '0', 10);
-            this.highScore = Number.isFinite(saved) && saved > 0 ? saved : 0;
+            legacyHigh = Number.isFinite(saved) && saved > 0 ? saved : 0;
+        } catch (e) { }
+
+        try {
+            const raw = localStorage.getItem(STORAGE_RANKING_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            this.ranking = Array.isArray(parsed) ? parsed : [];
         } catch (e) {
-            this.highScore = 0;
+            this.ranking = [];
         }
-        ui.titleHighscore.textContent = this.highScore.toLocaleString('pt-BR');
+
+        const topRankScore = this.ranking.length > 0 ? (this.ranking[0].score || 0) : 0;
+        this.highScore = Math.max(legacyHigh, topRankScore);
+
+        this.renderRankingUI();
+        this.renderCharacterSlider();
     },
 
-    saveHighScore(score) {
+    getSelectedCharacter() {
+        return CHARACTER_CATALOG[this.selectedCharIndex] || CHARACTER_CATALOG[0];
+    },
+
+    getActivePlayerName() {
+        const typed = ui.playerNameInput ? ui.playerNameInput.value.trim().slice(0, 16) : '';
+        this.currentPlayerName = typed || 'Jogador';
+        try {
+            if (typed) localStorage.setItem(STORAGE_LAST_PLAYER_KEY, typed);
+        } catch (e) { }
+        return this.currentPlayerName;
+    },
+
+    setSelectedCharacterIndex(newIdx) {
+        const total = CHARACTER_CATALOG.length;
+        this.selectedCharIndex = ((newIdx % total) + total) % total;
+        const char = this.getSelectedCharacter();
+        try {
+            localStorage.setItem(STORAGE_SELECTED_CHAR_KEY, char.id);
+        } catch (e) { }
+
+        this.renderCharacterSlider();
+        if (this.scene) this.scene.applyCharacter(char);
+    },
+
+    renderCharacterSlider() {
+        const char = this.getSelectedCharacter();
+        if (!ui.charName) return;
+
+        ui.charName.textContent = char.name;
+        ui.charSubtitle.textContent = char.subtitle;
+        ui.charSubtitle.classList.remove('warn');
+
+        const imgEl = ui.charPreviewImg;
+        const fbEl = ui.charPreviewFallback;
+        fbEl.textContent = char.emoji || '🎅';
+
+        const previewSrc = char.imgSrc || this.santaPreviewDataUrl;
+        if (previewSrc) {
+            imgEl.classList.remove('loaded');
+            fbEl.classList.remove('hidden');
+
+            imgEl.onload = () => {
+                imgEl.classList.add('loaded');
+                fbEl.classList.add('hidden');
+            };
+            imgEl.onerror = () => {
+                imgEl.classList.remove('loaded');
+                fbEl.classList.remove('hidden');
+                if (char.imgSrc) {
+                    ui.charSubtitle.textContent = `Adicione ${char.imgSrc}`;
+                    ui.charSubtitle.classList.add('warn');
+                }
+            };
+            imgEl.src = previewSrc;
+        } else {
+            imgEl.classList.remove('loaded');
+            fbEl.classList.remove('hidden');
+        }
+
+        const total = CHARACTER_CATALOG.length;
+        if (ui.charCounter) {
+            ui.charCounter.textContent = `${this.selectedCharIndex + 1} / ${total}`;
+        }
+        if (ui.btnCharGrid) {
+            ui.btnCharGrid.textContent = `Ver todos (${total})`;
+            ui.btnCharGrid.style.display = total > 1 ? 'inline-flex' : 'none';
+        }
+    },
+
+    openCharacterModal() {
+        if (!ui.charModalOverlay) return;
+        if (ui.charSearchInput) ui.charSearchInput.value = '';
+        this.renderCharacterGrid('');
+        ui.charModalOverlay.classList.remove('hidden');
+    },
+
+    closeCharacterModal() {
+        if (!ui.charModalOverlay) return;
+        if (ui.charSearchInput) ui.charSearchInput.blur();
+        ui.charModalOverlay.classList.add('hidden');
+    },
+
+    renderCharacterGrid(filterText = '') {
+        if (!ui.charGridList) return;
+        ui.charGridList.innerHTML = '';
+
+        const q = filterText.trim().toLocaleLowerCase('pt-BR');
+        const matches = CHARACTER_CATALOG
+            .map((char, idx) => ({ char, idx }))
+            .filter(({ char }) => {
+                if (!q) return true;
+                return (
+                    char.name.toLocaleLowerCase('pt-BR').includes(q) ||
+                    char.subtitle.toLocaleLowerCase('pt-BR').includes(q)
+                );
+            });
+
+        if (matches.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'char-grid-empty';
+            empty.textContent = 'Nenhuma pizzaria encontrada.';
+            ui.charGridList.appendChild(empty);
+            return;
+        }
+
+        matches.forEach(({ char, idx }) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'char-grid-card' + (idx === this.selectedCharIndex ? ' selected' : '');
+
+            const thumb = document.createElement('div');
+            thumb.className = 'char-grid-thumb';
+            const src = char.imgSrc || this.santaPreviewDataUrl;
+
+            if (src) {
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = char.name;
+                img.loading = 'lazy';
+                img.onerror = () => {
+                    thumb.textContent = char.emoji || '🍕';
+                };
+                thumb.appendChild(img);
+            } else {
+                thumb.textContent = char.emoji || '🎅';
+            }
+
+            const nameEl = document.createElement('div');
+            nameEl.className = 'char-grid-name';
+            nameEl.textContent = char.name;
+
+            const subEl = document.createElement('div');
+            subEl.className = 'char-grid-sub';
+            subEl.textContent = char.subtitle;
+
+            btn.appendChild(thumb);
+            btn.appendChild(nameEl);
+            btn.appendChild(subEl);
+
+            btn.addEventListener('click', () => {
+                soundFX.unlock();
+                soundFX.playClick();
+                this.setSelectedCharacterIndex(idx);
+                this.closeCharacterModal();
+            });
+
+            ui.charGridList.appendChild(btn);
+        });
+    },
+
+    recordPlayerScore(playerName, score, pizzas, maxCombo, charId) {
+        const cleanName = (playerName || '').trim().slice(0, 16) || 'Jogador';
+        const key = cleanName.toLocaleLowerCase('pt-BR');
+        const prevOverall = this.highScore;
+
+        const existing = this.ranking.find((r) => r.key === key);
+        if (existing) {
+            existing.name = cleanName;
+            if (score >= existing.score) {
+                existing.score = score;
+                existing.pizzas = pizzas;
+                existing.maxCombo = maxCombo;
+                existing.charId = charId;
+                existing.updatedAt = Date.now();
+            }
+        } else {
+            this.ranking.push({
+                key,
+                name: cleanName,
+                score,
+                pizzas,
+                maxCombo,
+                charId,
+                updatedAt: Date.now()
+            });
+        }
+
+        this.ranking.sort((a, b) => (b.score - a.score) || (b.pizzas - a.pizzas) || (a.updatedAt - b.updatedAt));
+        this.ranking = this.ranking.slice(0, 10);
+
         if (score > this.highScore) {
             this.highScore = score;
             try {
                 localStorage.setItem(STORAGE_HIGHSCORE_KEY, String(score));
             } catch (e) { }
-            return true;
         }
-        return false;
+
+        try {
+            localStorage.setItem(STORAGE_RANKING_KEY, JSON.stringify(this.ranking));
+        } catch (e) { }
+
+        this.renderRankingUI();
+        return score > prevOverall && score > 0;
+    },
+
+    renderRankingList(targetUl, maxItems = 5) {
+        if (!targetUl) return;
+        targetUl.innerHTML = '';
+
+        if (this.ranking.length === 0) {
+            const emptyLi = document.createElement('li');
+            emptyLi.className = 'ranking-empty';
+            emptyLi.textContent = 'Insira seu nome e jogue para estrear o ranking!';
+            targetUl.appendChild(emptyLi);
+            return;
+        }
+
+        const activeKey = (ui.playerNameInput ? ui.playerNameInput.value.trim() : this.currentPlayerName)
+            .toLocaleLowerCase('pt-BR');
+        const medals = ['🥇', '🥈', '🥉'];
+
+        this.ranking.slice(0, maxItems).forEach((entry, idx) => {
+            const li = document.createElement('li');
+            li.className = 'ranking-item' + (activeKey && entry.key === activeKey ? ' is-current' : '');
+
+            const posSpan = document.createElement('span');
+            posSpan.className = 'ranking-pos';
+            posSpan.textContent = medals[idx] || `${idx + 1}º`;
+
+            const charDef = CHARACTER_CATALOG.find((c) => c.id === entry.charId);
+            const avatarSpan = document.createElement('span');
+            avatarSpan.className = 'ranking-avatar';
+            const avatarSrc = (charDef && charDef.imgSrc) || (charDef && charDef.id === 'santa_default' ? this.santaPreviewDataUrl : null);
+            if (avatarSrc) {
+                const avImg = document.createElement('img');
+                avImg.src = avatarSrc;
+                avImg.alt = '';
+                avImg.onerror = () => {
+                    avatarSpan.textContent = (charDef && charDef.emoji) || '🎅';
+                };
+                avatarSpan.appendChild(avImg);
+            } else {
+                avatarSpan.textContent = (charDef && charDef.emoji) || '🎅';
+            }
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'ranking-player';
+            nameSpan.textContent = entry.name;
+
+            const scoreSpan = document.createElement('span');
+            scoreSpan.className = 'ranking-score';
+            scoreSpan.textContent = `${entry.score.toLocaleString('pt-BR')} pts`;
+
+            li.appendChild(posSpan);
+            li.appendChild(avatarSpan);
+            li.appendChild(nameSpan);
+            li.appendChild(scoreSpan);
+            targetUl.appendChild(li);
+        });
+    },
+
+
+
+    renderRankingUI() {
+        if (ui.titleHighscore) {
+            ui.titleHighscore.textContent = this.highScore.toLocaleString('pt-BR');
+        }
+        if (ui.rankingPlayersBadge) {
+            if (this.ranking.length >= 2) {
+                ui.rankingPlayersBadge.textContent = `${this.ranking.length} jogadores`;
+            } else {
+                ui.rankingPlayersBadge.innerHTML = `Recorde: <strong id="title-highscore">${this.highScore.toLocaleString('pt-BR')}</strong>`;
+                ui.titleHighscore = document.getElementById('title-highscore');
+            }
+        }
+        this.renderRankingList(ui.titleRankingList, 5);
+        this.renderRankingList(ui.goRankingList, 3);
     }
 };
 
-gameBridge.loadHighScore();
+gameBridge.initStorage();
 
 function updateHUD(state) {
     const { score, combo, lives, ammo, phaseInfo } = state;
 
+    if (ui.hudPlayerName) {
+        ui.hudPlayerName.textContent = gameBridge.currentPlayerName || 'Pontos';
+    }
     ui.hudScore.textContent = score.toLocaleString('pt-BR');
 
     ui.hearts.forEach((h, idx) => {
@@ -695,22 +1069,113 @@ function showPhaseBanner(phaseInfo, bonusAdded) {
 }
 
 function showGameOverScreen(score, pizzasDelivered, maxCombo, phaseInfo) {
-    const isNewRecord = gameBridge.saveHighScore(score);
+    const playerName = gameBridge.currentPlayerName || 'Jogador';
+    const char = gameBridge.getSelectedCharacter();
+    const isNewRecord = gameBridge.recordPlayerScore(
+        playerName,
+        score,
+        pizzasDelivered,
+        maxCombo,
+        char.id
+    );
+
+    if (ui.goPlayerTag) {
+        ui.goPlayerTag.textContent = `${char.emoji} ${playerName} • Fim da Entrega`;
+    }
     ui.goScore.textContent = score.toLocaleString('pt-BR');
     ui.goHighscore.textContent = gameBridge.highScore.toLocaleString('pt-BR');
-    ui.titleHighscore.textContent = gameBridge.highScore.toLocaleString('pt-BR');
     ui.goPizzas.textContent = String(pizzasDelivered);
     ui.goMaxCombo.textContent = `x${maxCombo}`;
     ui.goPhase.textContent = `Nível ${phaseInfo.phase} • ${phaseInfo.timeStr} — ${phaseInfo.name}`;
 
-    ui.newRecordBadge.classList.toggle('show', isNewRecord && score > 0);
+    ui.newRecordBadge.classList.toggle('show', isNewRecord);
     ui.gameoverOverlay.classList.remove('hidden');
 }
 
-// Eventos dos botões de interface
+if (ui.playerNameInput) {
+    ui.playerNameInput.addEventListener('input', () => {
+        gameBridge.renderRankingUI();
+    });
+    ui.playerNameInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+            ui.playerNameInput.blur();
+        }
+    });
+}
+
+if (ui.btnCharPrev) {
+    ui.btnCharPrev.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex - 1);
+    });
+}
+if (ui.btnCharNext) {
+    ui.btnCharNext.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex + 1);
+    });
+}
+if (ui.charSliderStage) {
+    let swipeStartX = null;
+    ui.charSliderStage.addEventListener('pointerdown', (e) => {
+        swipeStartX = e.clientX;
+    });
+    ui.charSliderStage.addEventListener('pointerup', (e) => {
+        if (swipeStartX === null) return;
+        const dx = e.clientX - swipeStartX;
+        swipeStartX = null;
+        if (Math.abs(dx) >= 32) {
+            soundFX.unlock();
+            soundFX.playClick();
+            gameBridge.setSelectedCharacterIndex(
+                gameBridge.selectedCharIndex + (dx < 0 ? 1 : -1)
+            );
+        }
+    });
+    ui.charSliderStage.addEventListener('pointercancel', () => {
+        swipeStartX = null;
+    });
+}
+
+if (ui.btnCharGrid) {
+    ui.btnCharGrid.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.openCharacterModal();
+    });
+}
+if (ui.btnCharModalClose) {
+    ui.btnCharModalClose.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.closeCharacterModal();
+    });
+}
+if (ui.charModalOverlay) {
+    ui.charModalOverlay.addEventListener('click', (e) => {
+        if (e.target === ui.charModalOverlay) {
+            gameBridge.closeCharacterModal();
+        }
+    });
+}
+if (ui.charSearchInput) {
+    ui.charSearchInput.addEventListener('input', (e) => {
+        gameBridge.renderCharacterGrid(e.target.value);
+    });
+    ui.charSearchInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') gameBridge.closeCharacterModal();
+    });
+}
+
 ui.btnStart.addEventListener('click', () => {
     soundFX.unlock();
     soundFX.playClick();
+    if (ui.playerNameInput) ui.playerNameInput.blur();
+    gameBridge.getActivePlayerName();
     if (gameBridge.scene) gameBridge.scene.startGame();
 });
 
@@ -732,6 +1197,22 @@ ui.btnPauseRestart.addEventListener('click', () => {
     if (gameBridge.scene) gameBridge.scene.startGame();
 });
 
+if (ui.btnPauseMenu) {
+    ui.btnPauseMenu.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        if (gameBridge.scene) gameBridge.scene.returnToMenu();
+    });
+}
+
+if (ui.btnGoMenu) {
+    ui.btnGoMenu.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        if (gameBridge.scene) gameBridge.scene.returnToMenu();
+    });
+}
+
 ui.btnPause.addEventListener('click', () => {
     soundFX.unlock();
     soundFX.playClick();
@@ -747,7 +1228,6 @@ ui.btnMute.addEventListener('click', () => {
     if (!isMuted) soundFX.playClick();
 });
 
-// Multitouch real no botão VOAR (pointerdown / pointerup / pointercancel)
 const releaseFlyButton = (e) => {
     gameBridge.activeFlyPointers.delete(e.pointerId);
     if (gameBridge.activeFlyPointers.size === 0) {
@@ -768,7 +1248,6 @@ ui.btnFly.addEventListener('pointerup', releaseFlyButton);
 ui.btnFly.addEventListener('pointercancel', releaseFlyButton);
 ui.btnFly.addEventListener('lostpointercapture', releaseFlyButton);
 
-// Botão LANÇAR PIZZA (disparo imediato em pointerdown, compatível com VOAR simultâneo)
 ui.btnPizza.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     soundFX.unlock();
@@ -943,6 +1422,36 @@ function generateProceduralTextures(scene) {
         g.fillStyle(0xfacc15, 1);
         g.fillCircle(30, 40, 4.5);
         g.generateTexture('pizza_pack', 60, 68);
+        g.destroy();
+    }
+
+    // --- 3B. CORAÇÃO COLETÁVEL DE VIDA EXTRA (`life_heart`: 44 x 44) ---
+    if (!scene.textures.exists('life_heart')) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        // Brilho externo e aro dourado (destaque no entardecer e na meia-noite)
+        g.fillStyle(0xfca5a5, 0.26);
+        g.fillCircle(22, 22, 20);
+        g.lineStyle(1.8, 0xfef08a, 0.85);
+        g.strokeCircle(22, 22, 19);
+
+        // Sombra / contorno escuro do coração
+        g.fillStyle(0x991b1b, 1);
+        g.fillCircle(16, 18.5, 8.8);
+        g.fillCircle(28, 18.5, 8.8);
+        g.fillTriangle(8, 21, 36, 21, 22, 37);
+
+        // Corpo vermelho vibrante do coração
+        g.fillStyle(0xef4444, 1);
+        g.fillCircle(16, 17.5, 8);
+        g.fillCircle(28, 17.5, 8);
+        g.fillTriangle(8.5, 20, 35.5, 20, 22, 35.5);
+
+        // Brilho branco no canto superior esquerdo
+        g.fillStyle(0xffffff, 0.72);
+        g.fillCircle(14, 15, 2.5);
+        g.fillCircle(11.8, 18.8, 1.3);
+
+        g.generateTexture('life_heart', 44, 44);
         g.destroy();
     }
 
@@ -1947,57 +2456,22 @@ class NoelDeliveryScene extends Phaser.Scene {
     }
 
     preload() {
-        /*
-         * =================================================================
-         * HOOKS PARA ARTES PNG CUSTOMIZADAS (FALLBACK PROCEDURAL AUTOMÁTICO)
-         * =================================================================
-         * Descomente qualquer linha abaixo quando quiser usar suas próprias
-         * imagens PNG. Todas as texturas não carregadas usam automaticamente
-         * os gráficos procedurais gerados em generateProceduralTextures().
-         *
-         * Chaves disponíveis e dimensões recomendadas:
-         * - santa_sleigh       :  92 x  58 px
-         * - pizza_box          :  32 x  26 px
-         * - pizza_pack         :  60 x  68 px
-         * - chimney            :  44 x  56 px
-         * - house_chalet_sm    :  86 x  82 px
-         * - house_classic_md   : 114 x 102 px
-         * - house_wide_family  : 156 x  86 px
-         * - house_sobrado_tall : 100 x 148 px
-         * - house_manor_lg     : 144 x 126 px
-         * - house_vip          : 138 x 138 px
-         * - obstacle_cloud     :  84 x  66 px
-         * - obstacle_drone     :  48 x  48 px
-         * - obstacle_bird      :  58 x  38 px
-         * - obstacle_pine      :  64 x 186 px
-         * - landmark_arembepe  : 224 x 164 px
-         * - landmark_jaua      : 232 x 204 px
-         * - landmark_abrantes  : 216 x 214 px
-         * - landmark_camacari  : 140 x 260 px
-         * - landmark_tomba     : 156 x 288 px
-         *
-         * Exemplos:
-         * this.load.image('santa_sleigh',       'assets/santa_sleigh.png');
-         * this.load.image('pizza_box',          'assets/pizza_box.png');
-         * this.load.image('pizza_pack',         'assets/pizza_pack.png');
-         * this.load.image('chimney',            'assets/chimney.png');
-         * this.load.image('house_chalet_sm',    'assets/house_chalet_sm.png');
-         * this.load.image('house_classic_md',   'assets/house_classic_md.png');
-         * this.load.image('house_wide_family',  'assets/house_wide_family.png');
-         * this.load.image('house_sobrado_tall', 'assets/house_sobrado_tall.png');
-         * this.load.image('house_manor_lg',     'assets/house_manor_lg.png');
-         * this.load.image('house_vip',          'assets/house_vip.png');
-         * this.load.image('obstacle_cloud',     'assets/obstacle_cloud.png');
-         * this.load.image('obstacle_drone',     'assets/obstacle_drone.png');
-         * this.load.image('obstacle_bird',      'assets/obstacle_bird.png');
-         * this.load.image('obstacle_pine',      'assets/obstacle_pine.png');
-         * this.load.image('landmark_arembepe',  'assets/landmark_arembepe.png');
-         * this.load.image('landmark_jaua',      'assets/landmark_jaua.png');
-         * this.load.image('landmark_abrantes',  'assets/landmark_abrantes.png');
-         * this.load.image('landmark_camacari',  'assets/landmark_camacari.png');
-         * this.load.image('landmark_tomba',     'assets/landmark_tomba.png');
-         * =================================================================
-         */
+        this.failedCharTextures = new Set();
+        this.loadingCharTextures = new Set();
+        this.desiredCharacter = gameBridge.getSelectedCharacter();
+
+        this.load.on('loaderror', (fileObj) => {
+            if (fileObj && fileObj.key) {
+                this.failedCharTextures.add(fileObj.key);
+                this.loadingCharTextures.delete(fileObj.key);
+            }
+        });
+
+        // Carrega apenas o personagem selecionado inicialmente (os demais carregam sob demanda)
+        if (this.desiredCharacter && this.desiredCharacter.imgSrc) {
+            this.loadingCharTextures.add(this.desiredCharacter.textureKey);
+            this.load.image(this.desiredCharacter.textureKey, this.desiredCharacter.imgSrc);
+        }
     }
 
     create() {
@@ -2019,6 +2493,12 @@ class NoelDeliveryScene extends Phaser.Scene {
 
         generateProceduralTextures(this);
 
+        try {
+            gameBridge.santaPreviewDataUrl = this.textures.getBase64('santa_sleigh');
+            gameBridge.renderCharacterSlider();
+            gameBridge.renderRankingUI();
+        } catch (e) { }
+
         // Estado geral do jogo
         this.gameState = 'TITLE'; // 'TITLE' | 'PLAYING' | 'PAUSED' | 'GAMEOVER'
         this.score = 0;
@@ -2037,6 +2517,7 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.rightmostHouse = null;
         this.obstacleTimer = 1800;
         this.packTimer = 5200;
+        this.lifeTimer = Phaser.Math.Between(16000, 23000);
 
         // Pontos Turísticos da Bahia (10–16s entre spawns, sem repetir consecutivo)
         this.landmarkTimer = Phaser.Math.Between(4500, 6800);
@@ -2115,6 +2596,7 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.pizzasGroup = this.physics.add.group();
         this.obstaclesGroup = this.physics.add.group({ allowGravity: false });
         this.packsGroup = this.physics.add.group({ allowGravity: false });
+        this.livesGroup = this.physics.add.group({ allowGravity: false });
 
         this.renderDynamicSky(0, 0);
         this.seedInitialHouses();
@@ -2124,6 +2606,8 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.santa.body.setAllowGravity(false);
         this.santa.body.setSize(58, 30);
         this.santa.body.setOffset(16, 18);
+
+        this.applyCharacter(gameBridge.getSelectedCharacter());
 
         this.sleighTrail = this.add.particles(0, 0, 'star', {
             follow: this.santa,
@@ -2186,7 +2670,20 @@ class NoelDeliveryScene extends Phaser.Scene {
             this
         );
 
+        this.physics.add.overlap(
+            this.santa,
+            this.livesGroup,
+            this.handleCollectLife,
+            null,
+            this
+        );
+
         // --- 5. TECLADO & TOQUE DIRETO OPCIONAL NO CANVAS ---
+        const isTypingInInput = () => {
+            const el = document.activeElement;
+            return Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'));
+        };
+
         this.keys = this.input.keyboard.addKeys({
             space: Phaser.Input.Keyboard.KeyCodes.SPACE,
             up: Phaser.Input.Keyboard.KeyCodes.UP,
@@ -2197,14 +2694,14 @@ class NoelDeliveryScene extends Phaser.Scene {
             e: Phaser.Input.Keyboard.KeyCodes.E,
             p: Phaser.Input.Keyboard.KeyCodes.P,
             esc: Phaser.Input.Keyboard.KeyCodes.ESC
-        });
+        }, false);
 
-        this.input.keyboard.on('keydown-ENTER', () => this.tryThrowPizza());
-        this.input.keyboard.on('keydown-RIGHT', () => this.tryThrowPizza());
-        this.input.keyboard.on('keydown-F', () => this.tryThrowPizza());
-        this.input.keyboard.on('keydown-E', () => this.tryThrowPizza());
-        this.input.keyboard.on('keydown-P', () => this.togglePause());
-        this.input.keyboard.on('keydown-ESC', () => this.togglePause());
+        this.input.keyboard.on('keydown-ENTER', () => { if (!isTypingInInput()) this.tryThrowPizza(); });
+        this.input.keyboard.on('keydown-RIGHT', () => { if (!isTypingInInput()) this.tryThrowPizza(); });
+        this.input.keyboard.on('keydown-F', () => { if (!isTypingInInput()) this.tryThrowPizza(); });
+        this.input.keyboard.on('keydown-E', () => { if (!isTypingInInput()) this.tryThrowPizza(); });
+        this.input.keyboard.on('keydown-P', () => { if (!isTypingInInput()) this.togglePause(); });
+        this.input.keyboard.on('keydown-ESC', () => { if (!isTypingInInput()) this.togglePause(); });
 
         this.canvasFlyPointers = new Set();
         this.input.on('pointerdown', (pointer) => {
@@ -2361,6 +2858,7 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.targetSkyProgress = 0;
         this.obstacleTimer = 1700;
         this.packTimer = 5200;
+        this.lifeTimer = Phaser.Math.Between(16000, 23000);
         this.landmarkTimer = Phaser.Math.Between(4500, 6800);
         this.lastLandmarkKey = null;
         this.lastPizzaTime = 0;
@@ -2373,6 +2871,9 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.santa.setPosition(96, 235);
         this.santa.setAngle(0);
         this.santa.setAlpha(1);
+
+        this.applyCharacter(gameBridge.getSelectedCharacter());
+
         this.santa.body.setAllowGravity(true);
         this.santa.body.setGravityY(680);
         this.santa.body.setVelocity(0, -85);
@@ -2406,6 +2907,106 @@ class NoelDeliveryScene extends Phaser.Scene {
         }
     }
 
+    applyCharacter(char) {
+        if (!this.santa || !this.santa.active) return;
+
+        const target = char || DEFAULT_CHARACTER;
+        this.desiredCharacter = target;
+
+        // Se é o Papai Noel padrão ou o PNG já está em memória, aplica imediatamente
+        if (!target.imgSrc || this.textures.exists(target.textureKey)) {
+            this.applyCharacterTexture(target);
+            return;
+        }
+
+        // Se o arquivo falhou ao carregar antes, mantém o Papai Noel como fallback
+        if (this.failedCharTextures && this.failedCharTextures.has(target.textureKey)) {
+            this.applyCharacterTexture(DEFAULT_CHARACTER);
+            return;
+        }
+
+        // Enquanto baixa o PNG novo, mantém o sprite seguro e agenda a troca instantânea
+        if (!this.loadingCharTextures.has(target.textureKey)) {
+            this.loadingCharTextures.add(target.textureKey);
+            const key = target.textureKey;
+
+            this.load.once(`filecomplete-image-${key}`, () => {
+                this.loadingCharTextures.delete(key);
+                if (this.desiredCharacter && this.desiredCharacter.textureKey === key) {
+                    this.applyCharacterTexture(this.desiredCharacter);
+                }
+            });
+
+            this.load.image(key, target.imgSrc);
+            if (!this.load.isLoading()) {
+                this.load.start();
+            }
+        }
+    }
+
+    applyCharacterTexture(char) {
+        if (!this.santa || !this.santa.active) return;
+
+        const hasValidTexture = Boolean(
+            char &&
+            char.textureKey &&
+            this.textures.exists(char.textureKey) &&
+            (!this.failedCharTextures || !this.failedCharTextures.has(char.textureKey))
+        );
+
+        const keyToUse = hasValidTexture ? char.textureKey : 'santa_sleigh';
+        this.santa.setTexture(keyToUse);
+
+        if (keyToUse === 'santa_sleigh') {
+            this.santa.setScale(1);
+            this.santa.body.setSize(58, 30);
+            this.santa.body.setOffset(16, 18);
+        } else {
+            const frame = this.santa.frame;
+            const maxW = (char && char.maxW) || 92;
+            const maxH = (char && char.maxH) || 66;
+            const scale = Math.min(maxW / frame.width, maxH / frame.height);
+            this.santa.setScale(scale);
+
+            const hitW = Math.min(frame.width * 0.8, 58 / scale);
+            const hitH = Math.min(frame.height * 0.75, 30 / scale);
+            this.santa.body.setSize(hitW, hitH, true);
+        }
+    }
+
+    returnToMenu() {
+        this.clearDynamicEntities();
+        this.gameState = 'TITLE';
+        this.skyProgress = 0;
+        this.targetSkyProgress = 0;
+
+        gameBridge.isFlyHeld = false;
+        gameBridge.activeFlyPointers.clear();
+        this.canvasFlyPointers.clear();
+        ui.btnFly.classList.remove('pressed');
+
+        this.santa.setPosition(96, 235);
+        this.santa.setAngle(0);
+        this.santa.setAlpha(1);
+        this.santa.body.setAllowGravity(false);
+        this.santa.body.setVelocity(0, 0);
+        this.santa.body.setAccelerationY(0);
+        this.applyCharacter(gameBridge.getSelectedCharacter());
+
+        this.seedInitialHouses();
+        this.renderDynamicSky(0, this.time.now);
+        this.physics.resume();
+        this.sleighTrail.start();
+
+        ui.pauseOverlay.classList.add('hidden');
+        ui.gameoverOverlay.classList.add('hidden');
+        ui.phaseBanner.classList.remove('show');
+        ui.titleOverlay.classList.remove('hidden');
+
+        gameBridge.renderRankingUI();
+        gameBridge.renderCharacterSlider();
+    }
+
     clearDynamicEntities() {
         this.housesList.forEach((h) => {
             if (h.lightsOverlay) h.lightsOverlay.destroy();
@@ -2422,6 +3023,11 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.packsGroup.getChildren().slice().forEach((pk) => {
             if (pk.aura) pk.aura.destroy();
             pk.destroy();
+        });
+
+        this.livesGroup.getChildren().slice().forEach((heart) => {
+            if (heart.aura) heart.aura.destroy();
+            heart.destroy();
         });
 
         this.obstaclesGroup.getChildren().slice().forEach((obs) => {
@@ -2635,12 +3241,20 @@ class NoelDeliveryScene extends Phaser.Scene {
             Phaser.Math.FloatBetween(0, 1) < (phaseInfo.phase >= 2 ? 0.42 : 0.34)
         ) {
             const pineX = prevRightEdge + gap * 0.5;
+            const tallestHouse = Math.max(...Object.values(HOUSE_CATALOG).map((h) => h.height));
+            const minPineScale = Math.max(0.95, (tallestHouse + 22) / 186); // ~177px mín. (nunca menor que o sobrado de 148px)
+            const maxPineScale = gap >= 112 ? 1.45 : 1.28; // até ~270px em vãos largos sem invadir as casas vizinhas
+            const pineScale = Phaser.Math.FloatBetween(minPineScale, maxPineScale);
+
             const pine = this.obstaclesGroup.create(pineX, this.groundY + 4, 'obstacle_pine')
                 .setOrigin(0.5, 1)
+                .setScale(pineScale)
                 .setDepth(18);
             pine.obstacleType = 'pine';
             pine.body.setSize(28, 134);
             pine.body.setOffset(18, 28);
+            pine.worldX = pineX;
+            this.syncBodyToSprite(pine);
         }
 
         return house;
@@ -2668,6 +3282,36 @@ class NoelDeliveryScene extends Phaser.Scene {
         }
     }
 
+    /**
+     * Sincroniza manualmente a hitbox sem deixar o Arcade Physics
+     * sobrescrever sprite.x / sprite.y no postUpdate (corrige flutuação e piscar).
+     */
+    syncBodyToSprite(sprite) {
+        const body = sprite.body;
+        if (!body) return;
+
+        body.moves = false;
+        body.updateBounds();
+
+        const sx = Math.abs(sprite.scaleX);
+        const sy = Math.abs(sprite.scaleY);
+
+        let left;
+        let top;
+        if (body.isCircle) {
+            left = sprite.x - body.halfWidth;
+            top = sprite.y - body.halfHeight;
+        } else {
+            left = sprite.x - sprite.originX * sprite.displayWidth + body.offset.x * sx;
+            top = sprite.y - sprite.originY * sprite.displayHeight + body.offset.y * sy;
+        }
+
+        body.position.set(left, top);
+        body.prev.set(left, top);
+        body.prevFrame.set(left, top);
+        body.updateCenter();
+    }
+
     /** Spawna um único inimigo aéreo */
     spawnSingleAirEnemy(type, laneY, xOffset, phaseInfo) {
         const spawnX = this.W + 56 + xOffset;
@@ -2686,6 +3330,7 @@ class NoelDeliveryScene extends Phaser.Scene {
             drone.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
             drone.extraSpeed = Phaser.Math.Between(36, 72) + (phaseInfo.phase - 2) * 14;
             drone.body.setCircle(15, 9, 9);
+            this.syncBodyToSprite(drone);
         } else {
             const cloud = this.obstaclesGroup.create(spawnX, laneY, 'obstacle_cloud').setDepth(27);
             cloud.obstacleType = 'cloud';
@@ -2703,6 +3348,7 @@ class NoelDeliveryScene extends Phaser.Scene {
             }
             cloud.body.setSize(52, 34);
             cloud.body.setOffset(16, 16);
+            this.syncBodyToSprite(cloud);
         }
     }
 
@@ -2779,8 +3425,25 @@ class NoelDeliveryScene extends Phaser.Scene {
         pack.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
         pack.body.setSize(48, 52);
         pack.body.setOffset(6, 10);
+        this.syncBodyToSprite(pack);
 
         pack.aura = this.add.circle(spawnX, spawnY + 8, 28, 0xfacc15, 0.24).setDepth(26.5);
+    }
+
+    /** Coração aéreo de vida extra (mais raro que os pacotes de pizza) */
+    spawnLifeHeart() {
+        const spawnX = this.W + 46;
+        const minY = 114;
+        const maxY = this.groundY - 255;
+        const spawnY = Phaser.Math.Between(minY, maxY);
+
+        const heart = this.livesGroup.create(spawnX, spawnY, 'life_heart').setDepth(27);
+        heart.baseY = spawnY;
+        heart.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        heart.body.setCircle(18, 4, 4);
+        this.syncBodyToSprite(heart);
+
+        heart.aura = this.add.circle(spawnX, spawnY, 24, 0xef4444, 0.24).setDepth(26.5);
     }
 
     tryThrowPizza() {
@@ -2847,6 +3510,28 @@ class NoelDeliveryScene extends Phaser.Scene {
             this.ammo = Math.min(MAX_AMMO, this.ammo + REFILL_AMOUNT);
             const gained = this.ammo - before;
             this.spawnFloatingText(px, py - 18, `+${gained} PIZZAS!`, '#86efac', 20);
+        }
+
+        this.syncAllHUD();
+    }
+
+    handleCollectLife(santa, heart) {
+        if (!heart.active || this.gameState !== 'PLAYING') return;
+
+        const hx = heart.x;
+        const hy = heart.y;
+        if (heart.aura) heart.aura.destroy();
+        heart.destroy();
+
+        soundFX.playHeal();
+        this.goldBurstEmitter.explode(20, hx, hy);
+
+        if (this.lives < MAX_LIVES) {
+            this.lives += 1;
+            this.spawnFloatingText(hx, hy - 18, '+1 VIDA! ❤', '#fda4af', 20);
+        } else {
+            this.score += 200;
+            this.spawnFloatingText(hx, hy - 18, 'VIDA CHEIA +200!', '#fde047', 16);
         }
 
         this.syncAllHUD();
@@ -3156,13 +3841,16 @@ class NoelDeliveryScene extends Phaser.Scene {
                 bird.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
                 bird.body.setSize(40, 20);
                 bird.body.setOffset(8, 10);
+                this.syncBodyToSprite(bird);
                 this.pendingWarnings.splice(i, 1);
             }
         }
 
         this.obstaclesGroup.getChildren().slice().forEach((obs) => {
             if (obs.obstacleType === 'pine') {
-                obs.x -= moveDx;
+             obs.worldX -= moveDx;
+             obs.x = Math.round(obs.worldX);
+             obs.y = this.groundY + 4;
             } else if (obs.obstacleType === 'bird') {
                 obs.x -= (speed + obs.extraSpeed) * dt;
                 obs.y = obs.baseY + Math.sin(time * 0.008 + obs.waveOffset) * 14;
@@ -3191,7 +3879,7 @@ class NoelDeliveryScene extends Phaser.Scene {
                     }
                 }
             }
-            obs.body.updateFromGameObject();
+            this.syncBodyToSprite(obs);
             if (obs.x < -100) {
                 if (obs.boltSprite) obs.boltSprite.destroy();
                 obs.destroy();
@@ -3222,7 +3910,7 @@ class NoelDeliveryScene extends Phaser.Scene {
             pack.x -= speed * 0.85 * dt;
             pack.y = pack.baseY + Math.sin(time * 0.0036 + pack.waveOffset) * 18;
             pack.angle = Math.sin(time * 0.0036 + pack.waveOffset) * 7;
-            pack.body.updateFromGameObject();
+            this.syncBodyToSprite(pack);
 
             if (pack.aura) {
                 pack.aura.setPosition(pack.x, pack.y + 8);
@@ -3231,6 +3919,36 @@ class NoelDeliveryScene extends Phaser.Scene {
             if (pack.x < -70) {
                 if (pack.aura) pack.aura.destroy();
                 pack.destroy();
+            }
+        });
+
+        // --- 6B. CORAÇÕES DE VIDA EXTRA (MENOS FREQUENTE QUE AS PIZZAS) ---
+        const activeHearts = this.livesGroup.getLength();
+        if (this.lives < MAX_LIVES && activeHearts === 0) {
+            this.lifeTimer -= delta;
+            if (this.lifeTimer <= 0) {
+                this.spawnLifeHeart();
+                // Frequência bem menor que as pizzas (14–20s com 1 vida; 18–26s com 2 vidas)
+                this.lifeTimer = this.lives === 1
+                    ? Phaser.Math.Between(14000, 20000)
+                    : Phaser.Math.Between(18000, 26000);
+            }
+        }
+
+        this.livesGroup.getChildren().slice().forEach((heart) => {
+            heart.x -= speed * 0.88 * dt;
+            heart.y = heart.baseY + Math.sin(time * 0.0042 + heart.waveOffset) * 20;
+            const beat = 1 + Math.sin(time * 0.009) * 0.08;
+            heart.setScale(beat);
+            this.syncBodyToSprite(heart);
+
+            if (heart.aura) {
+                heart.aura.setPosition(heart.x, heart.y);
+                heart.aura.setScale(0.92 + Math.sin(time * 0.009) * 0.2);
+            }
+            if (heart.x < -70) {
+                if (heart.aura) heart.aura.destroy();
+                heart.destroy();
             }
         });
 
@@ -3277,7 +3995,52 @@ class NoelDeliveryScene extends Phaser.Scene {
 /* =====================================================================
    7. INICIALIZAÇÃO DO PHASER 3 (420x740 RETRATO MOBILE-FIRST)
    ===================================================================== */
+
+function runSplashIntro() {
+    const overlay = document.getElementById('splash-overlay');
+    const slide71 = document.getElementById('splash-71dev');
+    const slideEco = document.getElementById('splash-ecocaixas');
+    const slideLogo = document.getElementById('splash-logo');
+    if (!overlay || !slide71 || !slideEco || !slideLogo) return;
+
+    let finished = false;
+    const timers = [];
+
+    const finishSplash = () => {
+        if (finished) return;
+        finished = true;
+        timers.forEach((t) => clearTimeout(t));
+        overlay.classList.add('fade-out');
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+        }, 650);
+    };
+
+    // Permite pular a intro com um toque/clique
+    overlay.addEventListener('pointerdown', finishSplash, { once: true });
+
+    // 1) Logo 71dev + "Desenvolvido por"
+    timers.push(setTimeout(() => {
+        slide71.classList.add('animate');
+    }, 250));
+
+    // 2) Logo Ecocaixas
+    timers.push(setTimeout(() => {
+        slideEco.classList.add('animate');
+    }, 3050));
+
+    // 3) Logo do jogo (logo.png)
+    timers.push(setTimeout(() => {
+        slideLogo.classList.add('animate');
+    }, 5850));
+
+    // 4) Revela o menu inicial
+    timers.push(setTimeout(finishSplash, 8650));
+}
+
 window.addEventListener('load', () => {
+    runSplashIntro();
+
     const config = {
         type: Phaser.AUTO,
         parent: 'phaser-container',

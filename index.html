@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Noel Delivery: Pizzaria de Natal</title>
+
+    <!-- Ícone da aba (.ico) e atalho no celular -->
+    <link rel="icon" type="image/x-icon" href="./img/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="./img/favicon.ico">
+    <link rel="apple-touch-icon" href="./img/logo.png">
+    
     <!-- Fontes legíveis e festivas -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,9 +17,26 @@
     <!-- Phaser 3 -->
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
     <link rel="stylesheet" href="./css/style.css">
-    
 </head>
 <body>
+    <!-- Tela de Intro / Splash Screen -->
+    <div id="splash-overlay" aria-label="Apresentação">
+        <div id="splash-71dev" class="splash-slide">
+            <span class="splash-caption">Desenvolvido por</span>
+            <img src="./img/71dev.png" alt="71dev" class="splash-logo">
+        </div>
+
+        <div id="splash-ecocaixas" class="splash-slide">
+            <img src="./img/ecocaixas.png" alt="Ecocaixas" class="splash-logo splash-logo-eco">
+        </div>
+
+        <div id="splash-logo" class="splash-slide">
+            <img src="./img/logo.png" alt="Noel Delivery" class="splash-logo splash-logo-game">
+        </div>
+
+        <span class="splash-skip-hint">Toque para pular</span>
+    </div>
+
     <div id="app-shell">
         <!-- Palco do Jogo + HUD + Telas -->
         <div id="stage-wrapper">
@@ -23,7 +46,7 @@
             <div id="hud-layer">
                 <div class="hud-row">
                     <div class="hud-pill score-pill" aria-label="Pontuação">
-                        <span class="score-label">Pontos</span>
+                        <span class="score-label" id="hud-player-name">Pontos</span>
                         <span id="hud-score">0</span>
                     </div>
 
@@ -83,36 +106,91 @@
 
             <!-- TELA INICIAL -->
             <div id="title-overlay" class="overlay-screen">
-                <div class="modal-card">
-                    <div class="festive-pill">🎅 Pizzaria de Natal 🍕</div>
-                    <h1 class="game-title">Noel Delivery</h1>
-                    <p class="game-subtitle">Entregue pizzas quentinhas nas chaminés do entardecer (18h) até a meia-noite!</p>
+                <div class="modal-card title-modal">
+                    <h1 class="menu-logo-wrap">
+                        <img
+                            src="./img/logo-menu-top.png"
+                            alt="Noel Delivery - Pizzaria de Natal"
+                            class="menu-top-logo"
+                        >
+                    </h1>
 
-                    <div class="guide-box">
-                        <div class="guide-row">
-                            <span class="guide-badge fly">VOAR</span>
-                            <span><strong>Segure</strong> para subir e desviar de nuvens, drones, pássaros gelados e pinheiros.</span>
+                    <!-- Campo Nome do Jogador -->
+                    <div class="player-input-group">
+                        <label for="player-name-input" class="section-mini-label">👤 Nome do Jogador</label>
+                        <input
+                            id="player-name-input"
+                            type="text"
+                            maxlength="16"
+                            placeholder="Digite seu nome..."
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
+                    </div>
+
+                    <!-- Slider Seletor de Personagem -->
+                    <div class="char-selector-box">
+                        <div class="section-mini-label">🛷 Escolha seu Personagem</div>
+                        <div class="char-slider-row">
+                            <button id="btn-char-prev" class="slider-arrow" type="button" aria-label="Personagem anterior">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+
+                            <div id="char-slider-stage" class="char-slider-stage">
+                                <div class="char-preview-wrap">
+                                    <img id="char-preview-img" src="" alt="Personagem selecionado">
+                                    <div id="char-preview-fallback" class="char-preview-fallback">🎅</div>
+                                </div>
+                                <div class="char-meta">
+                                    <div id="char-name" class="char-name">Papai Noel</div>
+                                    <div id="char-subtitle" class="char-subtitle">Trenó Clássico</div>
+                                </div>
+                            </div>
+
+                            <button id="btn-char-next" class="slider-arrow" type="button" aria-label="Próximo personagem">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
                         </div>
-                        <div class="guide-row">
-                            <span class="guide-badge pizza">LANÇAR</span>
-                            <span><strong>Toque</strong> para acertar as chaminés de cada casa (estoque máx. <strong>10</strong>).</span>
-                        </div>
-                        <div class="guide-row">
-                            <span class="guide-badge pack">PACOTES</span>
-                            <span>Pegue <strong>pacotes de paraquedas</strong> no céu para ganhar <strong>+4 pizzas</strong>!</span>
-                        </div>
-                        <div class="guide-row">
-                            <span class="guide-badge clock">18h → 00h</span>
-                            <span>Suba de nível com novos desafios enquanto pontos turísticos da Bahia passam ao fundo!</span>
+                        <div class="char-slider-footer">
+                            <span id="char-counter" class="char-counter">1 / 1</span>
+                            <button id="btn-char-grid" class="char-grid-btn" type="button">Ver todos</button>
                         </div>
                     </div>
 
-                    <div class="highscore-strip">
-                        <span>🏆 Recorde Atual:</span>
-                        <span id="title-highscore">0</span>
+                    <!-- Ranking Local (multi-jogadores no mesmo celular) -->
+                    <div id="title-ranking-box" class="ranking-box">
+                        <div class="ranking-header">
+                            <span>🏆 Ranking Local</span>
+                            <span id="ranking-players-badge" class="ranking-count-badge">Recorde: <strong id="title-highscore">0</strong></span>
+                        </div>
+                        <ul id="title-ranking-list" class="ranking-list"></ul>
                     </div>
 
-                    <button id="btn-start" class="primary-btn" type="button">JOGAR AGORA</button>
+                    <button id="btn-start" class="primary-btn" type="button">INICIAR ENTREAGAS</button>
+
+                    <!-- Como jogar recolhível para não apertar a tela em celulares menores -->
+                    <details class="guide-details">
+                        <summary>❓ Como Jogar</summary>
+                        <div class="guide-box">
+                            <div class="guide-row">
+                                <span class="guide-badge fly">VOAR</span>
+                                <span><strong>Segure</strong> para subir e desviar de nuvens, drones, pássaros gelados e pinheiros.</span>
+                            </div>
+                            <div class="guide-row">
+                                <span class="guide-badge pizza">LANÇAR</span>
+                                <span><strong>Toque</strong> para acertar as chaminés (estoque máx. <strong>10</strong>).</span>
+                            </div>
+                            <div class="guide-row">
+                                <span class="guide-badge pack">PACOTES</span>
+                                <span>Pegue <strong>pacotes de paraquedas</strong> no céu para ganhar <strong>+4 pizzas</strong>!</span>
+                            </div>
+                            <div class="guide-row">
+                                <span class="guide-badge clock">18h → 00h</span>
+                                <span>Suba de nível enquanto pontos turísticos da Bahia passam ao fundo!</span>
+                            </div>
+                        </div>
+                    </details>
+
                     <div class="desktop-hint">Teclado: <strong>Espaço / ↑ / W</strong> (Voar) • <strong>Enter / → / F / E</strong> (Lançar)</div>
                 </div>
             </div>
@@ -125,14 +203,15 @@
                     <p class="game-subtitle">As pizzas ainda estão quentinhas no trenó!</p>
                     <button id="btn-resume" class="primary-btn" type="button">CONTINUAR</button>
                     <button id="btn-pause-restart" class="secondary-btn" type="button">REINICIAR PARTIDA</button>
+                    <button id="btn-pause-menu" class="secondary-btn" type="button">MENU INICIAL</button>
                 </div>
             </div>
 
             <!-- TELA DE GAME OVER -->
             <div id="gameover-overlay" class="overlay-screen hidden">
                 <div class="modal-card">
-                    <div class="festive-pill">🎄 Fim da Entrega</div>
-                    <h2 class="game-title" style="font-size:31px">Trenó Avariado!</h2>
+                    <div class="festive-pill" id="go-player-tag">🎄 Fim da Entrega</div>
+                    <h2 class="game-title" style="font-size:29px">Trenó Avariado!</h2>
                     <div id="new-record-badge">🏆 NOVO RECORDE!</div>
 
                     <div class="stats-grid">
@@ -141,7 +220,7 @@
                             <div class="stat-value gold" id="go-score">0</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Recorde</div>
+                            <div class="stat-label">Recorde Geral</div>
                             <div class="stat-value" id="go-highscore">0</div>
                         </div>
                         <div class="stat-card">
@@ -158,10 +237,41 @@
                         </div>
                     </div>
 
+                    <!-- Mini Ranking atualizado no Game Over -->
+                    <div id="go-ranking-box" class="ranking-box compact">
+                        <div class="ranking-header">
+                            <span>🏆 Top Jogadores</span>
+                        </div>
+                        <ul id="go-ranking-list" class="ranking-list"></ul>
+                    </div>
+
                     <button id="btn-restart" class="primary-btn" type="button">JOGAR NOVAMENTE</button>
+                    <button id="btn-go-menu" class="secondary-btn" type="button">TROCAR JOGADOR / PERSONAGEM</button>
                 </div>
             </div>
         </div>
+<!-- MODAL CATÁLOGO DE MASCOTES -->
+            <div id="char-modal-overlay" class="overlay-screen hidden">
+                <div class="modal-card char-modal-card">
+                    <div class="char-modal-header">
+                        <div>
+                            <div class="char-modal-title">🍕 Mascotes & Pizzarias</div>
+                            <div class="char-modal-sub">Escolha quem vai pilotar o trenó</div>
+                        </div>
+                        <button id="btn-char-modal-close" class="icon-btn" type="button" aria-label="Fechar">✕</button>
+                    </div>
+
+                    <input
+                        id="char-search-input"
+                        type="search"
+                        placeholder="Buscar pizzaria ou cidade..."
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+
+                    <div id="char-grid-list" class="char-grid-list"></div>
+                </div>
+            </div>
 
         <!-- Barra de Controles de Polegar (Multitouch Real) -->
         <div id="controls-bar">
@@ -184,6 +294,7 @@
         </div>
     </div>
 
+    <script src="./js/personagens.js"></script>
     <script src="./js/game.js"></script>
 </body>
 </html>
