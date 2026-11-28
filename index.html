@@ -50,15 +50,18 @@
                         <span id="hud-score">0</span>
                     </div>
 
-                    <div class="hud-pill hearts-pill" aria-label="Vidas">
+                    <div id="hearts-pill" class="hud-pill hearts-pill" aria-label="Vidas">
                         <span class="heart-icon" data-heart="0">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <svg class="heart-svg heart-bg" viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <svg class="heart-svg heart-fill" viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                         </span>
                         <span class="heart-icon" data-heart="1">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <svg class="heart-svg heart-bg" viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <svg class="heart-svg heart-fill" viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                         </span>
                         <span class="heart-icon" data-heart="2">
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="#ef4444"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <svg class="heart-svg heart-bg" viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                            <svg class="heart-svg heart-fill" viewBox="0 0 24 24" width="18" height="18"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                         </span>
                     </div>
 
@@ -140,6 +143,7 @@
                                 <div class="char-preview-wrap">
                                     <img id="char-preview-img" src="" alt="Personagem selecionado">
                                     <div id="char-preview-fallback" class="char-preview-fallback">🎅</div>
+                                    <div id="char-lock-badge" class="char-lock-badge" aria-hidden="true">🔒</div>
                                 </div>
                                 <div class="char-meta">
                                     <div id="char-name" class="char-name">Papai Noel</div>
@@ -151,6 +155,19 @@
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                             </button>
                         </div>
+
+                        <!-- Dossiê de Desbloqueio (Projeto Blue Book) -->
+                        <div id="char-lock-dossier" class="char-lock-dossier hidden">
+                            <div class="dossier-top">
+                                <span id="dossier-title" class="dossier-title">📁 Projeto Blue Book</span>
+                                <span id="dossier-status" class="dossier-status">🔒 0 / 12.618 pts</span>
+                            </div>
+                            <div class="dossier-track">
+                                <div id="dossier-bar-fill" class="dossier-bar-fill"></div>
+                            </div>
+                            <p id="dossier-lore" class="dossier-lore"></p>
+                        </div>
+
                         <div class="char-slider-footer">
                             <span id="char-counter" class="char-counter">1 / 1</span>
                             <button id="btn-char-grid" class="char-grid-btn" type="button">Ver todos</button>
@@ -281,6 +298,15 @@
                     VOAR
                 </span>
                 <span class="btn-sub">SEGURE PARA SUBIR</span>
+            </button>
+
+            <button id="btn-laser" class="thumb-btn hidden" type="button" aria-label="Disparar laser nos obstáculos voadores">
+                <span id="btn-laser-badge">8</span>
+                <span class="btn-main">
+                    ⚡ LASER
+                </span>
+                <span class="btn-sub">ALVO VOADOR</span>
+                <div id="laser-cooldown-bar"></div>
             </button>
 
             <button id="btn-pizza" class="thumb-btn" type="button" aria-label="Lançar caixa de pizza">

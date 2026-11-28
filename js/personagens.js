@@ -24,4 +24,16 @@ window.NOEL_PERSONAGENS = [
         imgSrc: './img/personagens/sabor-do-sul.png',
         emoji: '🍕'
     },
+    {
+        id: 'alien-bluebook',
+        name: 'Alien',
+        subtitle: 'Arquivo Secreto • Projeto Blue Book',
+        imgSrc: './img/alien.png',
+        emoji: '🛸',
+        maxW: 92,
+        maxH: 58,
+        unlockScore: 12618,
+        unlockTitle: '📁 Projeto Blue Book (1947–1969)',
+        unlockLore: 'Entre 1947 e 1969, o Projeto Blue Book registrou 12.618 aparições de OVNIs. Desses casos, 701 nunca foram explicados. Os cientistas dizem que não existem provas de vida extraterrestre... Mas nenhum deles estava entregando pizzas de trenó na noite de Natal. Coincidência? Desvie das naves e tire suas próprias conclusões!'
+    }
 ];

@@ -171,6 +171,67 @@ class SoundFX {
         } catch (e) { }
     }
 
+    playAlienUnlock() {
+        if (this.muted || !this.ctx) return;
+        try {
+            const now = this.ctx.currentTime;
+            [392, 523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((freq, i) => {
+                const t = now + i * 0.065;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, t);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.06, t + 0.16);
+                gain.gain.setValueAtTime(0.001, t);
+                gain.gain.linearRampToValueAtTime(0.11, t + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.3);
+            });
+        } catch (e) { }
+    }
+
+    playLaser() {
+        if (this.muted || !this.ctx) return;
+        try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(1180, now);
+            osc.frequency.exponentialRampToValueAtTime(240, now + 0.13);
+            gain.gain.setValueAtTime(0.09, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        } catch (e) { }
+    }
+
+    playLaserHit() {
+        if (this.muted || !this.ctx) return;
+        try {
+            const now = this.ctx.currentTime;
+            [620, 920].forEach((freq, i) => {
+                const t = now + i * 0.04;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(freq, t);
+                osc.frequency.exponentialRampToValueAtTime(140, t + 0.11);
+                gain.gain.setValueAtTime(0.075, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(t);
+                osc.stop(t + 0.13);
+            });
+        } catch (e) { }
+    }
+
     playMiss() {
         if (this.muted || !this.ctx) return;
         try {
@@ -292,6 +353,7 @@ const STORAGE_HIGHSCORE_KEY = 'noel_delivery_highscore_v5';
 const STORAGE_RANKING_KEY = 'noel_delivery_ranking_v1';
 const STORAGE_LAST_PLAYER_KEY = 'noel_delivery_last_player_v1';
 const STORAGE_SELECTED_CHAR_KEY = 'noel_delivery_selected_char_v1';
+const STORAGE_UNLOCKED_CHARS_KEY = 'noel_delivery_unlocked_chars_v1';
 
 const DEFAULT_CHARACTER = {
     id: 'santa_default',
@@ -316,7 +378,11 @@ function buildCharacterCatalog() {
             imgSrc: item.imgSrc,
             emoji: item.emoji || '🍕',
             maxW: item.maxW || 92,
-            maxH: item.maxH || 66
+            maxH: item.maxH || 66,
+            unlockScore: Number(item.unlockScore) > 0 ? Number(item.unlockScore) : 0,
+            unlockTitle: item.unlockTitle || '',
+            unlockLore: item.unlockLore || '',
+            powers: item.powers || null
         }));
 
     return [DEFAULT_CHARACTER, ...normalized];
@@ -675,7 +741,18 @@ const ui = {
     btnFly: document.getElementById('btn-fly'),
     btnPizza: document.getElementById('btn-pizza'),
     btnPizzaBadge: document.getElementById('btn-pizza-badge'),
-    pizzaCooldownBar: document.getElementById('pizza-cooldown-bar')
+    pizzaCooldownBar: document.getElementById('pizza-cooldown-bar'),
+    charPreviewWrap: document.getElementById('char-preview-wrap'),
+    charLockDossier: document.getElementById('char-lock-dossier'),
+    dossierTitle: document.getElementById('dossier-title'),
+    dossierStatus: document.getElementById('dossier-status'),
+    dossierBarFill: document.getElementById('dossier-bar-fill'),
+    dossierLore: document.getElementById('dossier-lore'),
+    heartsPill: document.getElementById('hearts-pill'),
+    controlsBar: document.getElementById('controls-bar'),
+    btnLaser: document.getElementById('btn-laser'),
+    btnLaserBadge: document.getElementById('btn-laser-badge'),
+    laserCooldownBar: document.getElementById('laser-cooldown-bar')
 };
 
 const gameBridge = {
@@ -688,6 +765,7 @@ const gameBridge = {
     currentPlayerName: '',
     selectedCharIndex: 0,
     santaPreviewDataUrl: null,
+    unlockedCharIds: new Set(),
 
     initStorage() {
         try {
@@ -725,12 +803,64 @@ const gameBridge = {
         const topRankScore = this.ranking.length > 0 ? (this.ranking[0].score || 0) : 0;
         this.highScore = Math.max(legacyHigh, topRankScore);
 
+        // Carrega personagens já desbloqueados e sincroniza com o recorde atual
+        try {
+            const rawUnlocks = localStorage.getItem(STORAGE_UNLOCKED_CHARS_KEY);
+            const arr = rawUnlocks ? JSON.parse(rawUnlocks) : [];
+            this.unlockedCharIds = new Set(Array.isArray(arr) ? arr : []);
+        } catch (e) {
+            this.unlockedCharIds = new Set();
+        }
+        this.checkScoreUnlocks(this.highScore, true);
+
+        // Se o personagem salvo/URL ainda estiver bloqueado, volta o foco para o Papai Noel
+        if (!this.isCharacterUnlocked(this.getSelectedCharacter())) {
+            this.selectedCharIndex = 0;
+        }
+
         this.renderRankingUI();
         this.renderCharacterSlider();
     },
 
     getSelectedCharacter() {
         return CHARACTER_CATALOG[this.selectedCharIndex] || CHARACTER_CATALOG[0];
+    },
+
+    isCharacterUnlocked(char) {
+        if (!char || !char.unlockScore) return true;
+        return this.unlockedCharIds.has(char.id) || this.highScore >= char.unlockScore;
+    },
+
+    saveUnlockedChars() {
+        try {
+            localStorage.setItem(
+                STORAGE_UNLOCKED_CHARS_KEY,
+                JSON.stringify(Array.from(this.unlockedCharIds))
+            );
+        } catch (e) { }
+    },
+
+    /** Verifica se a pontuação atingiu a meta de algum personagem bloqueado */
+    checkScoreUnlocks(score, silent = false) {
+        const newlyUnlocked = [];
+        CHARACTER_CATALOG.forEach((char) => {
+            if (
+                char.unlockScore > 0 &&
+                score >= char.unlockScore &&
+                !this.unlockedCharIds.has(char.id)
+            ) {
+                this.unlockedCharIds.add(char.id);
+                newlyUnlocked.push(char);
+            }
+        });
+
+        if (newlyUnlocked.length > 0) {
+            this.saveUnlockedChars();
+            if (!silent) {
+                this.renderCharacterSlider();
+            }
+        }
+        return newlyUnlocked;
     },
 
     getActivePlayerName() {
@@ -747,7 +877,9 @@ const gameBridge = {
         this.selectedCharIndex = ((newIdx % total) + total) % total;
         const char = this.getSelectedCharacter();
         try {
-            localStorage.setItem(STORAGE_SELECTED_CHAR_KEY, char.id);
+            if (this.isCharacterUnlocked(char)) {
+                localStorage.setItem(STORAGE_SELECTED_CHAR_KEY, char.id);
+            }
         } catch (e) { }
 
         this.renderCharacterSlider();
@@ -761,6 +893,48 @@ const gameBridge = {
         ui.charName.textContent = char.name;
         ui.charSubtitle.textContent = char.subtitle;
         ui.charSubtitle.classList.remove('warn');
+
+        const isUnlocked = this.isCharacterUnlocked(char);
+
+        if (ui.charPreviewWrap) {
+            ui.charPreviewWrap.classList.toggle('is-locked', !isUnlocked);
+        }
+
+        if (ui.charLockDossier) {
+            if (char.unlockScore > 0) {
+                ui.charLockDossier.classList.remove('hidden');
+                ui.charLockDossier.classList.toggle('is-unlocked', isUnlocked);
+                const best = this.highScore;
+                const pct = isUnlocked ? 100 : Math.min(100, Math.round((best / char.unlockScore) * 100));
+
+                if (ui.dossierTitle) {
+                    ui.dossierTitle.textContent = char.unlockTitle || '🔒 Personagem Secreto';
+                }
+                if (ui.dossierStatus) {
+                    ui.dossierStatus.textContent = isUnlocked
+                        ? '🔓 DESBLOQUEADO!'
+                        : `🔒 1 partida: ${best.toLocaleString('pt-BR')} / ${char.unlockScore.toLocaleString('pt-BR')}`;
+                }
+                if (ui.dossierBarFill) {
+                    ui.dossierBarFill.style.width = `${pct}%`;
+                }
+                if (ui.dossierLore) {
+                    ui.dossierLore.textContent = char.unlockLore || '';
+                }
+            } else {
+                ui.charLockDossier.classList.add('hidden');
+            }
+        }
+
+        if (ui.btnStart) {
+            if (!isUnlocked) {
+                ui.btnStart.classList.add('is-locked');
+                ui.btnStart.textContent = `🔒 ATINJA ${char.unlockScore.toLocaleString('pt-BR')} PTS`;
+            } else {
+                ui.btnStart.classList.remove('is-locked');
+                ui.btnStart.textContent = 'JOGAR AGORA';
+            }
+        }
 
         const imgEl = ui.charPreviewImg;
         const fbEl = ui.charPreviewFallback;
@@ -838,7 +1012,11 @@ const gameBridge = {
         matches.forEach(({ char, idx }) => {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'char-grid-card' + (idx === this.selectedCharIndex ? ' selected' : '');
+            const isUnlocked = this.isCharacterUnlocked(char);
+            btn.type = 'button';
+            btn.className = 'char-grid-card'
+                + (idx === this.selectedCharIndex ? ' selected' : '')
+                + (!isUnlocked ? ' locked' : '');
 
             const thumb = document.createElement('div');
             thumb.className = 'char-grid-thumb';
@@ -867,6 +1045,12 @@ const gameBridge = {
 
             btn.appendChild(thumb);
             btn.appendChild(nameEl);
+
+            if (!isUnlocked) {
+                subEl.className = 'char-grid-lock-pill';
+                subEl.textContent = `🔒 ${char.unlockScore.toLocaleString('pt-BR')} pts`;
+            }
+
             btn.appendChild(subEl);
 
             btn.addEventListener('click', () => {
@@ -920,6 +1104,8 @@ const gameBridge = {
         try {
             localStorage.setItem(STORAGE_RANKING_KEY, JSON.stringify(this.ranking));
         } catch (e) { }
+
+        this.checkScoreUnlocks(Math.max(score, this.highScore), false);
 
         this.renderRankingUI();
         return score > prevOverall && score > 0;
@@ -1003,15 +1189,34 @@ const gameBridge = {
 gameBridge.initStorage();
 
 function updateHUD(state) {
-    const { score, combo, lives, ammo, phaseInfo } = state;
+    const {
+        score,
+        combo,
+        lives,
+        ammo,
+        phaseInfo,
+        greenHearts = false,
+        laserAmmo = 0,
+        maxLaserAmmo = 0,
+        showLaserBtn = false
+    } = state;
 
     if (ui.hudPlayerName) {
         ui.hudPlayerName.textContent = gameBridge.currentPlayerName || 'Pontos';
     }
     ui.hudScore.textContent = score.toLocaleString('pt-BR');
 
+    if (ui.heartsPill) {
+        ui.heartsPill.classList.toggle('alien-hearts', Boolean(greenHearts));
+    }
     ui.hearts.forEach((h, idx) => {
-        h.classList.toggle('lost', idx >= lives);
+        const remain = lives - idx;
+        h.classList.remove('half', 'lost');
+        if (remain <= 0) {
+            h.classList.add('lost');
+        } else if (remain < 1) {
+            h.classList.add('half');
+        }
     });
 
     ui.hudPhaseLabel.textContent = `NV ${phaseInfo.phase} • ${phaseInfo.timeStr}`;
@@ -1043,6 +1248,19 @@ function updateHUD(state) {
     } else {
         ui.comboBadge.classList.remove('visible');
     }
+
+    if (ui.controlsBar && ui.btnLaser) {
+        const showLaser = Boolean(showLaserBtn && maxLaserAmmo > 0);
+        ui.controlsBar.classList.toggle('has-laser', showLaser);
+        ui.btnLaser.classList.toggle('hidden', !showLaser);
+
+        if (showLaser && ui.btnLaserBadge) {
+            ui.btnLaserBadge.textContent = String(laserAmmo);
+            ui.btnLaserBadge.classList.toggle('low', laserAmmo > 0 && laserAmmo <= 2);
+            ui.btnLaserBadge.classList.toggle('empty', laserAmmo === 0);
+            ui.btnLaser.classList.toggle('is-empty', laserAmmo === 0);
+        }
+    }
 }
 
 function triggerEmptyAmmoShake() {
@@ -1051,6 +1269,13 @@ function triggerEmptyAmmoShake() {
         void el.offsetWidth;
         el.classList.add('shake-error');
     });
+}
+
+function triggerEmptyLaserShake() {
+    if (!ui.btnLaserBadge) return;
+    ui.btnLaserBadge.classList.remove('shake-error');
+    void ui.btnLaserBadge.offsetWidth;
+    ui.btnLaserBadge.classList.add('shake-error');
 }
 
 function showPhaseBanner(phaseInfo, bonusAdded) {
@@ -1066,6 +1291,18 @@ function showPhaseBanner(phaseInfo, bonusAdded) {
     gameBridge.bannerTimeout = setTimeout(() => {
         ui.phaseBanner.classList.remove('show');
     }, 3100);
+}
+
+function showUnlockBanner(char) {
+    if (gameBridge.bannerTimeout) clearTimeout(gameBridge.bannerTimeout);
+    ui.bannerKicker.textContent = '🛸 ARQUIVO BLUE BOOK DESBLOQUEADO!';
+    ui.bannerTitle.textContent = `PERSONAGEM ${char.name.toUpperCase()} LIBERADO!`;
+    ui.bannerBonus.textContent = `${char.unlockScore.toLocaleString('pt-BR')} pts atingidos • Disponível no Menu!`;
+
+    ui.phaseBanner.classList.add('show');
+    gameBridge.bannerTimeout = setTimeout(() => {
+        ui.phaseBanner.classList.remove('show');
+    }, 4200);
 }
 
 function showGameOverScreen(score, pizzasDelivered, maxCombo, phaseInfo) {
@@ -1173,6 +1410,16 @@ if (ui.charSearchInput) {
 
 ui.btnStart.addEventListener('click', () => {
     soundFX.unlock();
+    const selected = gameBridge.getSelectedCharacter();
+    if (!gameBridge.isCharacterUnlocked(selected)) {
+        soundFX.playEmpty();
+        if (ui.charLockDossier) {
+            ui.charLockDossier.classList.remove('shake-error');
+            void ui.charLockDossier.offsetWidth;
+            ui.charLockDossier.classList.add('shake-error');
+        }
+        return;
+    }
     soundFX.playClick();
     if (ui.playerNameInput) ui.playerNameInput.blur();
     gameBridge.getActivePlayerName();
@@ -1258,6 +1505,19 @@ const releasePizzaButton = () => ui.btnPizza.classList.remove('pressed');
 ui.btnPizza.addEventListener('pointerup', releasePizzaButton);
 ui.btnPizza.addEventListener('pointercancel', releasePizzaButton);
 ui.btnPizza.addEventListener('pointerleave', releasePizzaButton);
+
+if (ui.btnLaser) {
+    ui.btnLaser.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        soundFX.unlock();
+        ui.btnLaser.classList.add('pressed');
+        if (gameBridge.scene) gameBridge.scene.tryFireLaser();
+    });
+    const releaseLaserButton = () => ui.btnLaser.classList.remove('pressed');
+    ui.btnLaser.addEventListener('pointerup', releaseLaserButton);
+    ui.btnLaser.addEventListener('pointercancel', releaseLaserButton);
+    ui.btnLaser.addEventListener('pointerleave', releaseLaserButton);
+}
 
 /* =====================================================================
    5. GERADOR PROCEDURAL DE SPRITES (FALLBACK AUTOMÁTICO PARA PNGs)
@@ -1452,6 +1712,45 @@ function generateProceduralTextures(scene) {
         g.fillCircle(11.8, 18.8, 1.3);
 
         g.generateTexture('life_heart', 44, 44);
+        g.destroy();
+    }
+
+    // --- 3C. CORAÇÃO VERDE COLETÁVEL DO ALIEN (`life_heart_alien`: 44 x 44) ---
+    if (!scene.textures.exists('life_heart_alien')) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(0x86efac, 0.28);
+        g.fillCircle(22, 22, 20);
+        g.lineStyle(1.8, 0x4ade80, 0.9);
+        g.strokeCircle(22, 22, 19);
+
+        g.fillStyle(0x14532d, 1);
+        g.fillCircle(16, 18.5, 8.8);
+        g.fillCircle(28, 18.5, 8.8);
+        g.fillTriangle(8, 21, 36, 21, 22, 37);
+
+        g.fillStyle(0x22c55e, 1);
+        g.fillCircle(16, 17.5, 8);
+        g.fillCircle(28, 17.5, 8);
+        g.fillTriangle(8.5, 20, 35.5, 20, 22, 35.5);
+
+        g.fillStyle(0xffffff, 0.78);
+        g.fillCircle(14, 15, 2.5);
+        g.fillCircle(11.8, 18.8, 1.3);
+
+        g.generateTexture('life_heart_alien', 44, 44);
+        g.destroy();
+    }
+
+    // --- 3D. FEIXE DE LASER DO ALIEN (`alien_laser`: 38 x 12) ---
+    if (!scene.textures.exists('alien_laser')) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(0x22c55e, 0.35);
+        g.fillRoundedRect(0, 0, 38, 12, 6);
+        g.fillStyle(0x4ade80, 0.95);
+        g.fillRoundedRect(2, 2.5, 34, 7, 3.5);
+        g.fillStyle(0xffffff, 1);
+        g.fillRoundedRect(5, 4.5, 28, 3, 1.5);
+        g.generateTexture('alien_laser', 38, 12);
         g.destroy();
     }
 
@@ -2445,6 +2744,22 @@ function generateProceduralTextures(scene) {
         g.generateTexture('smoke_particle', 20, 20);
         g.destroy();
     }
+
+    if (!scene.textures.exists('easter_alien')) {
+        const g = scene.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(0x86efac, 0.25);
+        g.fillEllipse(48, 30, 88, 28);
+        g.fillStyle(0x94a3b8, 1);
+        g.fillEllipse(48, 30, 74, 20);
+        g.fillStyle(0x38bdf8, 0.85);
+        g.fillEllipse(48, 21, 36, 18);
+        [24, 36, 48, 60, 72].forEach((lx) => {
+            g.fillStyle(0x86efac, 1);
+            g.fillCircle(lx, 31, 2.6);
+        });
+        g.generateTexture('easter_alien', 96, 54);
+        g.destroy();
+    }
 }
 
 /* =====================================================================
@@ -2472,6 +2787,8 @@ class NoelDeliveryScene extends Phaser.Scene {
             this.loadingCharTextures.add(this.desiredCharacter.textureKey);
             this.load.image(this.desiredCharacter.textureKey, this.desiredCharacter.imgSrc);
         }
+
+        this.load.image('easter_alien', './img/alien.png');
     }
 
     create() {
@@ -2511,6 +2828,14 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.isInvincible = false;
         this.scrollSpeed = 162;
         this.lastPizzaTime = 0;
+
+        this.activeCharacter = DEFAULT_CHARACTER;
+        this.laserAmmo = 0;
+        this.maxLaserAmmo = 0;
+        this.lastLaserTime = 0;
+        this.laserCooldownMs = 320;
+        this.lastEmptyLaserWarnTime = 0;
+
         this.pizzaCooldownMs = 250;
         this.lastEmptyWarnTime = 0;
         this.lastHouseKey = null;
@@ -2523,6 +2848,9 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.landmarkTimer = Phaser.Math.Between(4500, 6800);
         this.lastLandmarkKey = null;
         this.activeLandmarks = [];
+
+        this.alienEvent = null;
+        this.alienTimer = Phaser.Math.Between(22000, 38000);
 
         // Listas determinísticas (casas, chaminés SEM física e alertas de Pássaro Gelado)
         this.housesList = [];
@@ -2598,6 +2926,8 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.packsGroup = this.physics.add.group({ allowGravity: false });
         this.livesGroup = this.physics.add.group({ allowGravity: false });
 
+        this.lasersGroup = this.physics.add.group({ allowGravity: false });
+
         this.renderDynamicSky(0, 0);
         this.seedInitialHouses();
 
@@ -2653,6 +2983,16 @@ class NoelDeliveryScene extends Phaser.Scene {
             emitting: false
         }).setDepth(35);
 
+        this.laserBurstEmitter = this.add.particles(0, 0, 'star', {
+            speed: { min: 80, max: 220 },
+            angle: { min: 0, max: 360 },
+            scale: { start: 0.95, end: 0 },
+            alpha: { start: 1, end: 0 },
+            tint: [0x22c55e, 0x86efac, 0xfef08a, 0xffffff],
+            lifespan: 480,
+            emitting: false
+        }).setDepth(35);
+
         // --- 4. OVERLAPS DO TRENÓ ---
         this.physics.add.overlap(
             this.santa,
@@ -2674,6 +3014,14 @@ class NoelDeliveryScene extends Phaser.Scene {
             this.santa,
             this.livesGroup,
             this.handleCollectLife,
+            null,
+            this
+        );
+
+        this.physics.add.overlap(
+            this.lasersGroup,
+            this.obstaclesGroup,
+            this.handleLaserObstacleHit,
             null,
             this
         );
@@ -2702,6 +3050,8 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.input.keyboard.on('keydown-E', () => { if (!isTypingInInput()) this.tryThrowPizza(); });
         this.input.keyboard.on('keydown-P', () => { if (!isTypingInInput()) this.togglePause(); });
         this.input.keyboard.on('keydown-ESC', () => { if (!isTypingInInput()) this.togglePause(); });
+        this.input.keyboard.on('keydown-Q', () => { if (!isTypingInInput()) this.tryFireLaser(); });
+        this.input.keyboard.on('keydown-X', () => { if (!isTypingInInput()) this.tryFireLaser(); });
 
         this.canvasFlyPointers = new Set();
         this.input.on('pointerdown', (pointer) => {
@@ -2731,14 +3081,38 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.syncAllHUD();
     }
 
+    hasGreenHearts() {
+        return Boolean(this.activeCharacter && this.activeCharacter.powers && this.activeCharacter.powers.greenHearts);
+    }
+
+    hasHalfDamage() {
+        return Boolean(this.activeCharacter && this.activeCharacter.powers && this.activeCharacter.powers.halfDamage);
+    }
+
     syncAllHUD() {
+        const showLaserBtn = this.gameState === 'PLAYING' || this.gameState === 'PAUSED';
         updateHUD({
             score: this.score,
             combo: this.combo,
             lives: this.lives,
             ammo: this.ammo,
-            phaseInfo: getPhaseInfo(this.pizzasDelivered)
+            phaseInfo: getPhaseInfo(this.pizzasDelivered),
+            greenHearts: this.hasGreenHearts(),
+            laserAmmo: this.laserAmmo,
+            maxLaserAmmo: this.maxLaserAmmo,
+            showLaserBtn
         });
+
+        // Verifica desbloqueio pela pontuação atingida NESTA partida (nunca soma entre partidas)
+        if (this.gameState === 'PLAYING') {
+            const unlockedNow = gameBridge.checkScoreUnlocks(this.score, false);
+            if (unlockedNow.length > 0) {
+                const char = unlockedNow[0];
+                soundFX.playAlienUnlock();
+                this.goldBurstEmitter.explode(34, this.santa.x + 10, this.santa.y);
+                showUnlockBanner(char);
+            }
+        }
     }
 
     /** Atualiza degradê do céu, Sol/Lua, estrelas, aurora, paralaxe, janelas e pontos turísticos */
@@ -2851,6 +3225,14 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.combo = 0;
         this.maxCombo = 0;
         this.lives = 3;
+
+        const chosen = gameBridge.getSelectedCharacter();
+        this.activeCharacter = gameBridge.isCharacterUnlocked(chosen) ? chosen : DEFAULT_CHARACTER;
+        this.maxLaserAmmo = (this.activeCharacter.powers && this.activeCharacter.powers.laserAmmo) || 0;
+        this.laserAmmo = this.maxLaserAmmo;
+        this.lastLaserTime = 0;
+        this.lastEmptyLaserWarnTime = 0;
+
         this.currentPhase = 1;
         this.isInvincible = false;
         this.scrollSpeed = 162;
@@ -2861,6 +3243,7 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.lifeTimer = Phaser.Math.Between(16000, 23000);
         this.landmarkTimer = Phaser.Math.Between(4500, 6800);
         this.lastLandmarkKey = null;
+        this.alienTimer = Phaser.Math.Between(22000, 38000);
         this.lastPizzaTime = 0;
         this.lastHouseKey = null;
         gameBridge.isFlyHeld = false;
@@ -3003,6 +3386,11 @@ class NoelDeliveryScene extends Phaser.Scene {
         ui.phaseBanner.classList.remove('show');
         ui.titleOverlay.classList.remove('hidden');
 
+        this.activeCharacter = DEFAULT_CHARACTER;
+        this.maxLaserAmmo = 0;
+        this.laserAmmo = 0;
+        this.syncAllHUD();
+
         gameBridge.renderRankingUI();
         gameBridge.renderCharacterSlider();
     }
@@ -3044,7 +3432,11 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.activeLandmarks.forEach((lm) => this.destroyLandmark(lm));
         this.activeLandmarks = [];
 
+        this.destroyAlienEasterEgg();
+
         this.pizzasGroup.clear(true, true);
+
+        this.lasersGroup.clear(true, true);
     }
 
     destroyChimneyExtras(chimney) {
@@ -3065,6 +3457,151 @@ class NoelDeliveryScene extends Phaser.Scene {
         if (lm.beaconCore) lm.beaconCore.destroy();
         if (lm.badgeBg) lm.badgeBg.destroy();
         if (lm.badgeText) lm.badgeText.destroy();
+    }
+
+    destroyAlienEasterEgg() {
+        if (!this.alienEvent) return;
+        const ev = this.alienEvent;
+        if (ev.ship) ev.ship.destroy();
+        if (ev.shipGlow) ev.shipGlow.destroy();
+        if (ev.phraseText) ev.phraseText.destroy();
+        if (ev.cloudPuffs) ev.cloudPuffs.forEach((c) => c.destroy());
+        this.alienEvent = null;
+    }
+
+    /** Easter egg raro no horizonte: nave alienígena + frase em nuvem leve */
+    spawnAlienEasterEgg() {
+        this.destroyAlienEasterEgg();
+
+        const horizonY = Phaser.Math.Between(248, 332);
+        const startX = -80;
+        const endX = this.W + 90;
+
+        // Nuvens finas de névoa esticadas no horizonte atrás da frase
+        const puffSpecs = [
+            { ox: -115, oy: 4, sx: 1.55, sy: 0.52 },
+            { ox: 0, oy: -2, sx: 1.95, sy: 0.62 },
+            { ox: 115, oy: 5, sx: 1.55, sy: 0.52 }
+        ];
+        const cloudPuffs = puffSpecs.map((p) => {
+            const c = this.add.image(this.W * 0.5 + p.ox, horizonY + p.oy, 'bg_cloud')
+                .setScale(p.sx, p.sy)
+                .setAlpha(0)
+                .setDepth(5.05);
+            c.baseOx = p.ox;
+            c.baseOy = p.oy;
+            return c;
+        });
+
+        // Frase estilo nuvem leve ocupando a largura do horizonte
+        const phraseText = this.add.text(this.W * 0.5, horizonY, 'Os aliens estão vindo!', {
+            fontFamily: 'Fredoka, sans-serif',
+            fontSize: '30px',
+            fontStyle: 'bold',
+            color: '#f8fafc',
+            stroke: '#e2e8f0',
+            strokeThickness: 2
+        })
+            .setOrigin(0.5)
+            .setDepth(5.15)
+            .setAlpha(0);
+        phraseText.setShadow(0, 0, '#ffffff', 12, true, true);
+
+        // Garante que a frase ocupe o horizonte inteiro sem cortar nas bordas (420px)
+        const maxHorizonW = this.W - 28;
+        if (phraseText.width > maxHorizonW) {
+            phraseText.setScale(maxHorizonW / phraseText.width);
+        }
+
+        // Brilho suave atrás da nave + sprite alien.png redimensionado proporcionalmente
+        const shipY = horizonY - 40;
+        const shipGlow = this.add.circle(startX, shipY, 34, 0x86efac, 0).setDepth(5.2);
+        const ship = this.add.image(startX, shipY, 'easter_alien')
+            .setDepth(5.25)
+            .setAlpha(0);
+
+        const frame = ship.frame;
+        if (frame && frame.width > 0 && frame.height > 0) {
+            const scale = Math.min(92 / frame.width, 54 / frame.height);
+            ship.setScale(scale);
+        }
+
+        this.alienEvent = {
+            elapsed: 0,
+            duration: 12500, // tempo total da travessia suave (~12.5s)
+            startX,
+            endX,
+            horizonY,
+            shipBaseY: shipY,
+            cloudCenterX: this.W * 0.5 + 16,
+            ship,
+            shipGlow,
+            phraseText,
+            cloudPuffs
+        };
+    }
+
+    updateAlienEasterEgg(time, delta, dt) {
+        if (!this.alienEvent) {
+            this.alienTimer -= delta;
+            if (this.alienTimer <= 0) {
+                // 65% de chance de aparecer quando o timer zera; caso contrário tenta mais tarde
+                if (Phaser.Math.FloatBetween(0, 1) < 0.65) {
+                    this.spawnAlienEasterEgg();
+                } else {
+                    this.alienTimer = Phaser.Math.Between(18000, 30000);
+                }
+            }
+            return;
+        }
+
+        const ev = this.alienEvent;
+        ev.elapsed += delta;
+        const progress = Phaser.Math.Clamp(ev.elapsed / ev.duration, 0, 1);
+
+        // Nave atravessa lentamente o céu com flutuação suave
+        const shipX = Phaser.Math.Linear(ev.startX, ev.endX, progress);
+        const shipY = ev.shipBaseY + Math.sin(time * 0.003) * 9;
+        const shipFade = progress < 0.12
+            ? progress / 0.12
+            : (progress > 0.86 ? (1 - progress) / 0.14 : 1);
+
+        ev.ship.setPosition(shipX, shipY);
+        ev.ship.setAngle(Math.sin(time * 0.0022) * 5);
+        ev.ship.setAlpha(shipFade * 0.68);
+
+        ev.shipGlow.setPosition(shipX, shipY);
+        ev.shipGlow.setScale(0.92 + Math.sin(time * 0.006) * 0.12);
+        ev.shipGlow.setAlpha(shipFade * 0.15);
+
+        // Frase e névoa aparecem suaves no horizonte, derivam como nuvem e dissipam no fim
+        let cloudFade = 0;
+        if (progress > 0.08 && progress < 0.30) {
+            cloudFade = (progress - 0.08) / 0.22;
+        } else if (progress >= 0.30 && progress <= 0.72) {
+            cloudFade = 1;
+        } else if (progress > 0.72 && progress < 0.96) {
+            cloudFade = 1 - (progress - 0.72) / 0.24;
+        }
+
+        ev.cloudCenterX -= 5.5 * dt;
+        const driftY = Math.sin(time * 0.0014) * 3.5;
+
+        ev.phraseText.setPosition(ev.cloudCenterX, ev.horizonY + driftY);
+        ev.phraseText.setAlpha(cloudFade * 0.40);
+
+        ev.cloudPuffs.forEach((c, idx) => {
+            c.setPosition(
+                ev.cloudCenterX + c.baseOx + Math.sin(time * 0.001 + idx) * 6,
+                ev.horizonY + c.baseOy + driftY
+            );
+            c.setAlpha(cloudFade * 0.16);
+        });
+
+        if (progress >= 1) {
+            this.destroyAlienEasterEgg();
+            this.alienTimer = Phaser.Math.Between(38000, 65000);
+        }
     }
 
     /**
@@ -3436,14 +3973,25 @@ class NoelDeliveryScene extends Phaser.Scene {
         const minY = 114;
         const maxY = this.groundY - 255;
         const spawnY = Phaser.Math.Between(minY, maxY);
+        const isGreen = this.hasGreenHearts();
 
-        const heart = this.livesGroup.create(spawnX, spawnY, 'life_heart').setDepth(27);
+        const heart = this.livesGroup.create(
+            spawnX,
+            spawnY,
+            isGreen ? 'life_heart_alien' : 'life_heart'
+        ).setDepth(27);
         heart.baseY = spawnY;
         heart.waveOffset = Phaser.Math.FloatBetween(0, Math.PI * 2);
         heart.body.setCircle(18, 4, 4);
         this.syncBodyToSprite(heart);
 
-        heart.aura = this.add.circle(spawnX, spawnY, 24, 0xef4444, 0.24).setDepth(26.5);
+        heart.aura = this.add.circle(
+            spawnX,
+            spawnY,
+            24,
+            isGreen ? 0x22c55e : 0xef4444,
+            0.24
+        ).setDepth(26.5);
     }
 
     tryThrowPizza() {
@@ -3491,6 +4039,70 @@ class NoelDeliveryScene extends Phaser.Scene {
         });
     }
 
+    tryFireLaser() {
+        if (this.gameState !== 'PLAYING' || this.maxLaserAmmo <= 0) return;
+
+        const now = this.time.now;
+        if (now - this.lastLaserTime < this.laserCooldownMs) return;
+
+        if (this.laserAmmo <= 0) {
+            if (now - this.lastEmptyLaserWarnTime > 380) {
+                this.lastEmptyLaserWarnTime = now;
+                soundFX.playEmpty();
+                triggerEmptyLaserShake();
+                this.spawnFloatingText(
+                    this.santa.x + 24,
+                    this.santa.y - 34,
+                    'SEM LASER!',
+                    '#f87171',
+                    17
+                );
+            }
+            return;
+        }
+
+        this.lastLaserTime = now;
+        this.laserAmmo -= 1;
+        soundFX.playLaser();
+        this.animateLaserCooldown();
+        this.syncAllHUD();
+
+        const laser = this.lasersGroup.create(this.santa.x + 36, this.santa.y + 4, 'alien_laser')
+            .setDepth(28);
+        laser.body.setAllowGravity(false);
+        laser.body.setVelocity(560, 0);
+        laser.body.setSize(34, 12);
+    }
+
+    animateLaserCooldown() {
+        if (!ui.laserCooldownBar) return;
+        ui.laserCooldownBar.style.transition = 'none';
+        ui.laserCooldownBar.style.width = '100%';
+        requestAnimationFrame(() => {
+            ui.laserCooldownBar.style.transition = `width ${this.laserCooldownMs}ms linear`;
+            ui.laserCooldownBar.style.width = '0%';
+        });
+    }
+
+    handleLaserObstacleHit(laser, obstacle) {
+        if (!laser.active || !obstacle.active || this.gameState !== 'PLAYING') return;
+
+        // O laser atinge APENAS obstáculos voadores (nuvens, drones e pássaros gelados)
+        if (obstacle.obstacleType === 'pine') return;
+
+        const ox = obstacle.x;
+        const oy = obstacle.y;
+        laser.destroy();
+        if (obstacle.boltSprite) obstacle.boltSprite.destroy();
+        obstacle.destroy();
+
+        soundFX.playLaserHit();
+        this.laserBurstEmitter.explode(18, ox, oy);
+        this.score += 50;
+        this.spawnFloatingText(ox, oy - 14, 'ZAP! +50', '#4ade80', 18);
+        this.syncAllHUD();
+    }
+
     handleCollectPizzaPack(santa, pack) {
         if (!pack.active || this.gameState !== 'PLAYING') return;
 
@@ -3527,8 +4139,14 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.goldBurstEmitter.explode(20, hx, hy);
 
         if (this.lives < MAX_LIVES) {
-            this.lives += 1;
-            this.spawnFloatingText(hx, hy - 18, '+1 VIDA! ❤', '#fda4af', 20);
+            this.lives = Math.min(MAX_LIVES, Number((this.lives + 1).toFixed(1)));
+            this.spawnFloatingText(
+                hx,
+                hy - 18,
+                this.hasGreenHearts() ? '+1 VIDA! 💚' : '+1 VIDA! ❤',
+                this.hasGreenHearts() ? '#86efac' : '#fda4af',
+                20
+            );
         } else {
             this.score += 200;
             this.spawnFloatingText(hx, hy - 18, 'VIDA CHEIA +200!', '#fde047', 16);
@@ -3601,7 +4219,12 @@ class NoelDeliveryScene extends Phaser.Scene {
     handleSantaObstacleHit(santa, obstacle) {
         if (this.gameState !== 'PLAYING' || this.isInvincible || !obstacle.active) return;
 
-        this.lives -= 1;
+        const damage = this.hasHalfDamage() ? 0.5 : 1;
+        this.lives = Math.max(0, Number((this.lives - damage).toFixed(1)));
+        if (damage === 0.5) {
+            this.spawnFloatingText(santa.x + 12, santa.y - 26, '-½ 💚', '#86efac', 17);
+        }
+
         this.combo = 0;
         this.isInvincible = true;
 
@@ -3748,6 +4371,9 @@ class NoelDeliveryScene extends Phaser.Scene {
                 this.landmarkTimer = Phaser.Math.Between(10000, 16000);
             }
         }
+
+        // --- 2B. EASTER EGG DA NAVE ALIENÍGENA NO HORIZONTE ---
+        this.updateAlienEasterEgg(time, delta, dt);
 
         // --- 3. FÍSICA DE VOO DO TRENÓ ---
         const flyKeyboard = this.keys.space.isDown || this.keys.up.isDown || this.keys.w.isDown;
@@ -3987,6 +4613,13 @@ class NoelDeliveryScene extends Phaser.Scene {
                 pizza.destroy();
             } else if (pizza.x > this.W + 50 || pizza.x < -50) {
                 pizza.destroy();
+            }
+        });
+
+        // --- 8. LIMPEZA DOS LASERS DO ALIEN ---
+        this.lasersGroup.getChildren().slice().forEach((laser) => {
+            if (laser.x > this.W + 60) {
+                laser.destroy();
             }
         });
     }
