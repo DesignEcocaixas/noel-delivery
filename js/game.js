@@ -232,6 +232,32 @@ class SoundFX {
         } catch (e) { }
     }
 
+    playCountdownBeep(isGo = false) {
+        if (this.muted || !this.ctx) return;
+        try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            if (isGo) {
+                osc.frequency.setValueAtTime(783.99, now);
+                osc.frequency.exponentialRampToValueAtTime(1046.5, now + 0.16);
+                gain.gain.setValueAtTime(0.13, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            } else {
+                osc.frequency.setValueAtTime(523.25, now);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+        } catch (e) { }
+    }
+
     playMiss() {
         if (this.muted || !this.ctx) return;
         try {
@@ -346,6 +372,7 @@ const soundFX = new SoundFX();
 const MAX_AMMO = 10;
 const REFILL_AMOUNT = 4;
 const MAX_LIVES = 3;
+const LASER_RECHARGE_MS = 30000;
 const CHIMNEY_TEX_W = 44;
 const CHIMNEY_TEX_H = 56;
 const STORAGE_HIGHSCORE_KEY = 'noel_delivery_highscore_v5';
@@ -752,7 +779,21 @@ const ui = {
     controlsBar: document.getElementById('controls-bar'),
     btnLaser: document.getElementById('btn-laser'),
     btnLaserBadge: document.getElementById('btn-laser-badge'),
-    laserCooldownBar: document.getElementById('laser-cooldown-bar')
+    laserCooldownBar: document.getElementById('laser-cooldown-bar'),
+    laserCooldownBar: document.getElementById('laser-cooldown-bar'),
+    btnLaserSub: document.querySelector('#btn-laser .btn-sub'),
+    btnOpenName: document.getElementById('btn-open-name'),
+    nameModalOverlay: document.getElementById('name-modal-overlay'),
+    btnNameNext: document.getElementById('btn-name-next'),
+    btnNameBack: document.getElementById('btn-name-back'),
+    charSelectOverlay: document.getElementById('char-select-overlay'),
+    btnCharBack: document.getElementById('btn-char-back'),
+    charPlayerPill: document.getElementById('char-player-pill'),
+    charStageCard: document.getElementById('char-stage-card'),
+    countdownOverlay: document.getElementById('countdown-overlay'),
+    countdownPlayer: document.getElementById('countdown-player'),
+    countdownNumber: document.getElementById('countdown-number'),
+    countdownSub: document.getElementById('countdown-sub')
 };
 
 const gameBridge = {
@@ -766,6 +807,7 @@ const gameBridge = {
     selectedCharIndex: 0,
     santaPreviewDataUrl: null,
     unlockedCharIds: new Set(),
+    charAnimTimer: null,
 
     initStorage() {
         try {
@@ -872,18 +914,80 @@ const gameBridge = {
         return this.currentPlayerName;
     },
 
-    setSelectedCharacterIndex(newIdx) {
+    setSelectedCharacterIndex(newIdx, direction = 0) {
         const total = CHARACTER_CATALOG.length;
-        this.selectedCharIndex = ((newIdx % total) + total) % total;
-        const char = this.getSelectedCharacter();
-        try {
-            if (this.isCharacterUnlocked(char)) {
-                localStorage.setItem(STORAGE_SELECTED_CHAR_KEY, char.id);
-            }
-        } catch (e) { }
+        const targetIdx = ((newIdx % total) + total) % total;
 
+        const applyChange = () => {
+            this.selectedCharIndex = targetIdx;
+            const char = this.getSelectedCharacter();
+            try {
+                if (this.isCharacterUnlocked(char)) {
+                    localStorage.setItem(STORAGE_SELECTED_CHAR_KEY, char.id);
+                }
+            } catch (e) { }
+
+            this.renderCharacterSlider();
+            if (this.scene) this.scene.applyCharacter(char);
+        };
+
+        const card = ui.charStageCard;
+        if (!card || direction === 0) {
+            applyChange();
+            return;
+        }
+
+        if (this.charAnimTimer) {
+            clearTimeout(this.charAnimTimer);
+            this.charAnimTimer = null;
+        }
+
+        const outClass = direction > 0 ? 'slide-out-left' : 'slide-out-right';
+        const inClass = direction > 0 ? 'slide-in-right' : 'slide-in-left';
+
+        card.classList.remove('slide-out-left', 'slide-out-right', 'slide-in-left', 'slide-in-right');
+        void card.offsetWidth;
+        card.classList.add(outClass);
+
+        this.charAnimTimer = setTimeout(() => {
+            applyChange();
+            card.classList.remove('slide-out-left', 'slide-out-right');
+            void card.offsetWidth;
+            card.classList.add(inClass);
+
+            this.charAnimTimer = setTimeout(() => {
+                card.classList.remove('slide-in-left', 'slide-in-right');
+                this.charAnimTimer = null;
+            }, 250);
+        }, 155);
+    },
+
+    openNameModal() {
+        if (ui.titleOverlay) ui.titleOverlay.classList.add('hidden');
+        if (ui.charSelectOverlay) ui.charSelectOverlay.classList.add('hidden');
+        if (ui.nameModalOverlay) ui.nameModalOverlay.classList.remove('hidden');
+        if (ui.playerNameInput) {
+            setTimeout(() => ui.playerNameInput.focus(), 60);
+        }
+    },
+
+    openCharSelectModal() {
+        const playerName = this.getActivePlayerName();
+        if (ui.playerNameInput) ui.playerNameInput.blur();
+        if (ui.charPlayerPill) ui.charPlayerPill.textContent = `👤 ${playerName}`;
+        if (ui.titleOverlay) ui.titleOverlay.classList.add('hidden');
+        if (ui.nameModalOverlay) ui.nameModalOverlay.classList.add('hidden');
+        if (ui.charSelectOverlay) ui.charSelectOverlay.classList.remove('hidden');
         this.renderCharacterSlider();
-        if (this.scene) this.scene.applyCharacter(char);
+    },
+
+    backToTitleFromFlow() {
+        if (ui.playerNameInput) ui.playerNameInput.blur();
+        if (ui.nameModalOverlay) ui.nameModalOverlay.classList.add('hidden');
+        if (ui.charSelectOverlay) ui.charSelectOverlay.classList.add('hidden');
+        if (ui.charModalOverlay) ui.charModalOverlay.classList.add('hidden');
+        if (ui.titleOverlay) ui.titleOverlay.classList.remove('hidden');
+        this.renderRankingUI();
     },
 
     renderCharacterSlider() {
@@ -932,7 +1036,7 @@ const gameBridge = {
                 ui.btnStart.textContent = `🔒 ATINJA ${char.unlockScore.toLocaleString('pt-BR')} PTS`;
             } else {
                 ui.btnStart.classList.remove('is-locked');
-                ui.btnStart.textContent = 'JOGAR AGORA';
+                ui.btnStart.textContent = 'INICIAR ENTREGAS';
             }
         }
 
@@ -1198,7 +1302,9 @@ function updateHUD(state) {
         greenHearts = false,
         laserAmmo = 0,
         maxLaserAmmo = 0,
-        showLaserBtn = false
+        showLaserBtn = false,
+        laserRechargeTimer = 0,
+        laserRechargeDuration = LASER_RECHARGE_MS
     } = state;
 
     if (ui.hudPlayerName) {
@@ -1255,10 +1361,20 @@ function updateHUD(state) {
         ui.btnLaser.classList.toggle('hidden', !showLaser);
 
         if (showLaser && ui.btnLaserBadge) {
-            ui.btnLaserBadge.textContent = String(laserAmmo);
+            const isRecharging = laserAmmo === 0 && laserRechargeTimer > 0;
+            ui.btnLaser.classList.toggle('is-empty', laserAmmo === 0 && !isRecharging);
+            ui.btnLaser.classList.toggle('is-recharging', isRecharging);
             ui.btnLaserBadge.classList.toggle('low', laserAmmo > 0 && laserAmmo <= 2);
-            ui.btnLaserBadge.classList.toggle('empty', laserAmmo === 0);
-            ui.btnLaser.classList.toggle('is-empty', laserAmmo === 0);
+            ui.btnLaserBadge.classList.toggle('empty', laserAmmo === 0 && !isRecharging);
+            ui.btnLaserBadge.classList.toggle('recharging', isRecharging);
+
+            if (isRecharging) {
+                if (ui.btnLaserSub) ui.btnLaserSub.textContent = 'RECARREGANDO...';
+                updateLaserRechargeUI(laserRechargeTimer, laserRechargeDuration);
+            } else {
+                ui.btnLaserBadge.textContent = String(laserAmmo);
+                if (ui.btnLaserSub) ui.btnLaserSub.textContent = 'ALVO VOADOR';
+            }
         }
     }
 }
@@ -1276,6 +1392,20 @@ function triggerEmptyLaserShake() {
     ui.btnLaserBadge.classList.remove('shake-error');
     void ui.btnLaserBadge.offsetWidth;
     ui.btnLaserBadge.classList.add('shake-error');
+}
+
+function updateLaserRechargeUI(remainingMs, totalMs) {
+    if (!ui.btnLaserBadge) return;
+    const secs = Math.ceil(remainingMs / 1000);
+    const label = `${secs}s`;
+    if (ui.btnLaserBadge.textContent !== label) {
+        ui.btnLaserBadge.textContent = label;
+    }
+    if (ui.laserCooldownBar) {
+        const pct = Math.min(100, Math.max(0, ((totalMs - remainingMs) / totalMs) * 100));
+        ui.laserCooldownBar.style.transition = 'none';
+        ui.laserCooldownBar.style.width = `${pct.toFixed(1)}%`;
+    }
 }
 
 function showPhaseBanner(phaseInfo, bonusAdded) {
@@ -1336,8 +1466,39 @@ if (ui.playerNameInput) {
     ui.playerNameInput.addEventListener('keydown', (e) => {
         e.stopPropagation();
         if (e.key === 'Enter') {
-            ui.playerNameInput.blur();
+            soundFX.unlock();
+            soundFX.playClick();
+            gameBridge.openCharSelectModal();
         }
+    });
+}
+
+if (ui.btnOpenName) {
+    ui.btnOpenName.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.openNameModal();
+    });
+}
+if (ui.btnNameBack) {
+    ui.btnNameBack.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.backToTitleFromFlow();
+    });
+}
+if (ui.btnNameNext) {
+    ui.btnNameNext.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.openCharSelectModal();
+    });
+}
+if (ui.btnCharBack) {
+    ui.btnCharBack.addEventListener('click', () => {
+        soundFX.unlock();
+        soundFX.playClick();
+        gameBridge.openNameModal();
     });
 }
 
@@ -1345,14 +1506,14 @@ if (ui.btnCharPrev) {
     ui.btnCharPrev.addEventListener('click', () => {
         soundFX.unlock();
         soundFX.playClick();
-        gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex - 1);
+        gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex - 1, -1);
     });
 }
 if (ui.btnCharNext) {
     ui.btnCharNext.addEventListener('click', () => {
         soundFX.unlock();
         soundFX.playClick();
-        gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex + 1);
+        gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex + 1, 1);
     });
 }
 if (ui.charSliderStage) {
@@ -1367,9 +1528,8 @@ if (ui.charSliderStage) {
         if (Math.abs(dx) >= 32) {
             soundFX.unlock();
             soundFX.playClick();
-            gameBridge.setSelectedCharacterIndex(
-                gameBridge.selectedCharIndex + (dx < 0 ? 1 : -1)
-            );
+            const dir = dx < 0 ? 1 : -1;
+            gameBridge.setSelectedCharacterIndex(gameBridge.selectedCharIndex + dir, dir);
         }
     });
     ui.charSliderStage.addEventListener('pointercancel', () => {
@@ -2836,6 +2996,9 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.laserCooldownMs = 320;
         this.lastEmptyLaserWarnTime = 0;
 
+        this.laserRechargeDuration = LASER_RECHARGE_MS;
+        this.laserRechargeTimer = 0;
+
         this.pizzaCooldownMs = 250;
         this.lastEmptyWarnTime = 0;
         this.lastHouseKey = null;
@@ -3090,7 +3253,10 @@ class NoelDeliveryScene extends Phaser.Scene {
     }
 
     syncAllHUD() {
-        const showLaserBtn = this.gameState === 'PLAYING' || this.gameState === 'PAUSED';
+        const showLaserBtn =
+            this.gameState === 'PLAYING' ||
+            this.gameState === 'PAUSED' ||
+            this.gameState === 'COUNTDOWN';
         updateHUD({
             score: this.score,
             combo: this.combo,
@@ -3100,7 +3266,9 @@ class NoelDeliveryScene extends Phaser.Scene {
             greenHearts: this.hasGreenHearts(),
             laserAmmo: this.laserAmmo,
             maxLaserAmmo: this.maxLaserAmmo,
-            showLaserBtn
+            showLaserBtn,
+            laserRechargeTimer: this.laserRechargeTimer,
+            laserRechargeDuration: this.laserRechargeDuration
         });
 
         // Verifica desbloqueio pela pontuação atingida NESTA partida (nunca soma entre partidas)
@@ -3214,11 +3382,25 @@ class NoelDeliveryScene extends Phaser.Scene {
         }
     }
 
+    cancelCountdown() {
+        if (!Array.isArray(this.countdownTimers)) {
+            this.countdownTimers = [];
+        }
+        if (this.countdownTimers.length) {
+            this.countdownTimers.forEach((id) => clearTimeout(id));
+            this.countdownTimers = [];
+        }
+        if (ui.countdownOverlay) {
+            ui.countdownOverlay.classList.add('hidden');
+        }
+    }
+
     startGame() {
         soundFX.unlock();
+        this.cancelCountdown();
         this.clearDynamicEntities();
 
-        this.gameState = 'PLAYING';
+        this.gameState = 'COUNTDOWN';
         this.score = 0;
         this.pizzasDelivered = 0;
         this.ammo = MAX_AMMO;
@@ -3232,6 +3414,12 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.laserAmmo = this.maxLaserAmmo;
         this.lastLaserTime = 0;
         this.lastEmptyLaserWarnTime = 0;
+        this.laserRechargeDuration = (this.activeCharacter.powers && this.activeCharacter.powers.laserRechargeMs) || LASER_RECHARGE_MS;
+        this.laserRechargeTimer = 0;
+        if (ui.laserCooldownBar) {
+            ui.laserCooldownBar.style.transition = 'none';
+            ui.laserCooldownBar.style.width = '0%';
+        }
 
         this.currentPhase = 1;
         this.isInvincible = false;
@@ -3251,27 +3439,88 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.canvasFlyPointers.clear();
         ui.btnFly.classList.remove('pressed');
 
+        // Posiciona o personagem flutuando suavemente enquanto corre a contagem de 2s
         this.santa.setPosition(96, 235);
         this.santa.setAngle(0);
         this.santa.setAlpha(1);
-
-        this.applyCharacter(gameBridge.getSelectedCharacter());
-
-        this.santa.body.setAllowGravity(true);
-        this.santa.body.setGravityY(680);
-        this.santa.body.setVelocity(0, -85);
+        this.applyCharacter(this.activeCharacter);
+        this.santa.body.setAllowGravity(false);
+        this.santa.body.setVelocity(0, 0);
+        this.santa.body.setAccelerationY(0);
 
         this.seedInitialHouses();
         this.renderDynamicSky(0, this.time.now);
         this.syncAllHUD();
 
+        // Fecha todos os modais e abre a contagem regressiva
         ui.titleOverlay.classList.add('hidden');
+        if (ui.nameModalOverlay) ui.nameModalOverlay.classList.add('hidden');
+        if (ui.charSelectOverlay) ui.charSelectOverlay.classList.add('hidden');
+        if (ui.charModalOverlay) ui.charModalOverlay.classList.add('hidden');
         ui.pauseOverlay.classList.add('hidden');
         ui.gameoverOverlay.classList.add('hidden');
         ui.phaseBanner.classList.remove('show');
 
         this.physics.resume();
         this.sleighTrail.start();
+
+        const triggerCountNumber = (numText) => {
+            if (!ui.countdownNumber) return;
+            ui.countdownNumber.classList.remove('pop');
+            void ui.countdownNumber.offsetWidth;
+            ui.countdownNumber.textContent = String(numText);
+            ui.countdownNumber.classList.add('pop');
+        };
+
+        if (ui.countdownPlayer) {
+            ui.countdownPlayer.textContent = `Preparar, ${gameBridge.currentPlayerName || 'Jogador'}!`;
+        }
+        if (ui.countdownSub) {
+            ui.countdownSub.textContent = `${this.activeCharacter.emoji || '🎅'} ${this.activeCharacter.name} pronto para decolar!`;
+        }
+        if (ui.countdownOverlay) {
+            ui.countdownOverlay.classList.remove('hidden');
+        }
+
+        // Contagem exata de 2 segundos: "2" (0s) -> "1" (1s) -> VAI! (2s)
+        const playBeep = (isGo) => {
+            if (typeof soundFX.playCountdownBeep === 'function') {
+                soundFX.playCountdownBeep(isGo);
+            } else {
+                soundFX.playClick();
+            }
+        };
+
+        triggerCountNumber('2');
+        playBeep(false);
+
+        this.countdownTimers.push(setTimeout(() => {
+            if (this.gameState !== 'COUNTDOWN') return;
+            triggerCountNumber('1');
+            playBeep(false);
+        }, 1000));
+
+        this.countdownTimers.push(setTimeout(() => {
+            if (this.gameState !== 'COUNTDOWN') return;
+            this.launchGameplayAfterCountdown();
+        }, 2000));
+    }
+
+    launchGameplayAfterCountdown() {
+        this.cancelCountdown();
+        this.gameState = 'PLAYING';
+        if (typeof soundFX.playCountdownBeep === 'function') {
+            soundFX.playCountdownBeep(true);
+        } else {
+            soundFX.playClick();
+        }
+
+        this.santa.body.setAllowGravity(true);
+        this.santa.body.setGravityY(680);
+        this.santa.body.setVelocity(0, -85);
+
+        this.spawnFloatingText(this.W * 0.5, this.H * 0.36, 'VAI! 🍕', '#fde047', 42);
+        this.syncAllHUD();
     }
 
     togglePause() {
@@ -3293,7 +3542,10 @@ class NoelDeliveryScene extends Phaser.Scene {
     applyCharacter(char) {
         if (!this.santa || !this.santa.active) return;
 
-        const target = char || DEFAULT_CHARACTER;
+        let target = char || DEFAULT_CHARACTER;
+        if (!gameBridge.isCharacterUnlocked(target)) {
+            target = DEFAULT_CHARACTER;
+        }
         this.desiredCharacter = target;
 
         // Se é o Papai Noel padrão ou o PNG já está em memória, aplica imediatamente
@@ -3358,6 +3610,7 @@ class NoelDeliveryScene extends Phaser.Scene {
     }
 
     returnToMenu() {
+        this.cancelCountdown();
         this.clearDynamicEntities();
         this.gameState = 'TITLE';
         this.skyProgress = 0;
@@ -3381,6 +3634,9 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.physics.resume();
         this.sleighTrail.start();
 
+        if (ui.nameModalOverlay) ui.nameModalOverlay.classList.add('hidden');
+        if (ui.charSelectOverlay) ui.charSelectOverlay.classList.add('hidden');
+        if (ui.charModalOverlay) ui.charModalOverlay.classList.add('hidden');
         ui.pauseOverlay.classList.add('hidden');
         ui.gameoverOverlay.classList.add('hidden');
         ui.phaseBanner.classList.remove('show');
@@ -3389,6 +3645,11 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.activeCharacter = DEFAULT_CHARACTER;
         this.maxLaserAmmo = 0;
         this.laserAmmo = 0;
+        this.laserRechargeTimer = 0;
+        if (ui.laserCooldownBar) {
+            ui.laserCooldownBar.style.transition = 'none';
+            ui.laserCooldownBar.style.width = '0%';
+        }
         this.syncAllHUD();
 
         gameBridge.renderRankingUI();
@@ -4050,11 +4311,14 @@ class NoelDeliveryScene extends Phaser.Scene {
                 this.lastEmptyLaserWarnTime = now;
                 soundFX.playEmpty();
                 triggerEmptyLaserShake();
+                const msg = this.laserRechargeTimer > 0
+                    ? `RECARGA ${Math.ceil(this.laserRechargeTimer / 1000)}s`
+                    : 'SEM LASER!';
                 this.spawnFloatingText(
                     this.santa.x + 24,
                     this.santa.y - 34,
-                    'SEM LASER!',
-                    '#f87171',
+                    msg,
+                    '#fde047',
                     17
                 );
             }
@@ -4064,7 +4328,12 @@ class NoelDeliveryScene extends Phaser.Scene {
         this.lastLaserTime = now;
         this.laserAmmo -= 1;
         soundFX.playLaser();
-        this.animateLaserCooldown();
+
+        if (this.laserAmmo <= 0) {
+            this.laserRechargeTimer = this.laserRechargeDuration;
+        } else {
+            this.animateLaserCooldown();
+        }
         this.syncAllHUD();
 
         const laser = this.lasersGroup.create(this.santa.x + 36, this.santa.y + 4, 'alien_laser')
@@ -4312,7 +4581,7 @@ class NoelDeliveryScene extends Phaser.Scene {
             }
         }
 
-        if (this.gameState === 'TITLE') {
+        if (this.gameState === 'TITLE' || this.gameState === 'COUNTDOWN') {
             this.santa.y = 235 + Math.sin(time * 0.003) * 14;
             this.santa.angle = Math.cos(time * 0.003) * 4;
             this.mountains.tilePositionX += 14 * dt;
@@ -4622,6 +4891,30 @@ class NoelDeliveryScene extends Phaser.Scene {
                 laser.destroy();
             }
         });
+
+        // --- 8B. RECARGA DE 30s QUANDO O LASER ZERA ---
+        if (this.maxLaserAmmo > 0 && this.laserAmmo === 0 && this.laserRechargeTimer > 0) {
+            this.laserRechargeTimer = Math.max(0, this.laserRechargeTimer - delta);
+            if (this.laserRechargeTimer <= 0) {
+                this.laserAmmo = this.maxLaserAmmo;
+                if (ui.laserCooldownBar) {
+                    ui.laserCooldownBar.style.transition = 'none';
+                    ui.laserCooldownBar.style.width = '0%';
+                }
+                soundFX.playRefill();
+                this.laserBurstEmitter.explode(20, this.santa.x + 12, this.santa.y);
+                this.spawnFloatingText(
+                    this.santa.x + 18,
+                    this.santa.y - 34,
+                    '⚡ LASER PRONTO!',
+                    '#4ade80',
+                    18
+                );
+                this.syncAllHUD();
+            } else {
+                updateLaserRechargeUI(this.laserRechargeTimer, this.laserRechargeDuration);
+            }
+        }
     }
 }
 

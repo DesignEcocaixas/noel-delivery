@@ -1645,6 +1645,320 @@ body {
     border-color: #ffffff;
 }
 
+#btn-laser.is-recharging {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+    border-color: rgba(74, 222, 128, 0.55);
+    border-bottom-color: #020617;
+    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.55);
+}
+
+#btn-laser.is-recharging #laser-cooldown-bar {
+    background: linear-gradient(90deg, #22c55e, #86efac, #fde047);
+}
+
+#btn-laser-badge.recharging {
+    background: #14532d;
+    color: #86efac;
+    border-color: #4ade80;
+    font-size: 12px;
+}
+
+/* ==================== NOVO FLUXO: MENU -> NOME -> PERSONAGEM -> CONTAGEM ==================== */
+.pulse-start-btn {
+    animation: pulseStartBtn 1.7s ease-in-out infinite;
+}
+
+@keyframes pulseStartBtn {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 10px 24px rgba(220, 38, 38, 0.45);
+    }
+    50% {
+        transform: scale(1.03);
+        box-shadow: 0 12px 30px rgba(250, 204, 21, 0.45);
+    }
+}
+
+#name-modal-overlay {
+    z-index: 32;
+}
+
+#char-select-overlay {
+    z-index: 34;
+}
+
+#countdown-overlay {
+    z-index: 38;
+    background: rgba(5, 8, 20, 0.44);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    pointer-events: none;
+}
+
+#char-modal-overlay {
+    z-index: 45;
+}
+
+.flow-modal {
+    gap: 11px;
+    padding: 18px 16px;
+}
+
+.flow-step-pill {
+    align-self: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #fef08a;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(250, 204, 21, 0.4);
+    padding: 4px 11px;
+    border-radius: 999px;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.char-select-card {
+    gap: 10px;
+    padding: 16px 14px;
+}
+
+.char-select-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.mini-nav-btn {
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(30, 41, 59, 0.88);
+    color: #e2e8f0;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 5px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.mini-nav-btn:active {
+    transform: scale(0.94);
+}
+
+/* Vitrine grande do personagem */
+.char-showcase-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.slider-arrow.big-arrow {
+    flex: 0 0 38px;
+    height: 48px;
+    border-radius: 14px;
+}
+
+.char-showcase-stage {
+    flex: 1;
+    min-width: 0;
+    border-radius: 18px;
+    background: radial-gradient(circle at 50% 38%, rgba(56, 189, 248, 0.18), rgba(11, 16, 32, 0.88) 74%);
+    border: 1.5px solid rgba(250, 204, 21, 0.28);
+    padding: 12px 10px;
+    overflow: hidden;
+    cursor: grab;
+    touch-action: pan-y;
+}
+
+.char-stage-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    will-change: transform, opacity;
+}
+
+.char-spotlight-wrap {
+    flex: 0 0 auto;
+    width: 146px;
+    height: 102px;
+    border-radius: 16px;
+    background: radial-gradient(circle at 50% 50%, rgba(250, 204, 21, 0.22) 0%, rgba(56, 189, 248, 0.14) 55%, rgba(15, 23, 42, 0.65) 100%);
+    border: 1.5px solid rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 0 22px rgba(250, 204, 21, 0.12), 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.char-spotlight-wrap #char-preview-img {
+    max-width: 124px;
+    max-height: 86px;
+    animation: none;
+}
+
+.char-spotlight-wrap .char-preview-fallback {
+    font-size: 46px;
+}
+
+.char-spotlight-wrap .char-lock-badge {
+    font-size: 32px;
+}
+
+.char-name-lg {
+    font-size: 21px;
+    text-align: center;
+    width: 100%;
+}
+
+.char-subtitle-lg {
+    font-size: 12px;
+    text-align: center;
+    width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+}
+
+.char-showcase-counter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px;
+}
+
+.swipe-tip {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+/* Animações Slide + Zoom Out ao trocar de personagem */
+.char-stage-card.slide-out-left {
+    animation: charZoomOutLeft 0.16s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.char-stage-card.slide-out-right {
+    animation: charZoomOutRight 0.16s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.char-stage-card.slide-in-right {
+    animation: charZoomInFromRight 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.char-stage-card.slide-in-left {
+    animation: charZoomInFromLeft 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes charZoomOutLeft {
+    from {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-52px) scale(0.68);
+    }
+}
+
+@keyframes charZoomOutRight {
+    from {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(52px) scale(0.68);
+    }
+}
+
+@keyframes charZoomInFromRight {
+    from {
+        opacity: 0;
+        transform: translateX(52px) scale(0.74);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes charZoomInFromLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-52px) scale(0.74);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+/* Contagem Regressiva de 2 segundos */
+.countdown-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    padding: 20px;
+}
+
+.countdown-player {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #fef08a;
+    text-shadow: 0 3px 12px rgba(0, 0, 0, 0.75);
+}
+
+.countdown-number {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 108px;
+    font-weight: 700;
+    line-height: 1;
+    background: linear-gradient(180deg, #ffffff 12%, #facc15 95%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.7));
+}
+
+.countdown-number.pop {
+    animation: countdownZoomPop 0.92s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes countdownZoomPop {
+    0% {
+        opacity: 0;
+        transform: scale(1.65);
+    }
+    22% {
+        opacity: 1;
+        transform: scale(1.0);
+    }
+    78% {
+        opacity: 1;
+        transform: scale(0.94);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.62);
+    }
+}
+
+.countdown-sub {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2e8f0;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 6px 14px;
+    border-radius: 999px;
+}
+
 @media (max-height: 680px) {
     .thumb-btn {
         height: 64px;
