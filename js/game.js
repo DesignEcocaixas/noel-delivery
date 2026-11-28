@@ -8,6 +8,33 @@ class SoundFX {
         this.ctx = null;
         this.muted = false;
         this.lastThrustTime = 0;
+
+        // Música de fundo em loop
+        this.bgm = new Audio('./audio/fundo.mp3'); // ajuste para './fundo.mp3' se estiver na raiz
+        this.bgm.loop = true;
+        this.bgm.preload = 'auto';
+        this.bgm.volume = 0.35; // volume equilibrado para não abafar os efeitos sonoros
+        this.bgmStarted = false;
+    }
+
+    startBgm() {
+        if (this.muted || !this.bgm) return;
+        const playPromise = this.bgm.play();
+        if (playPromise && typeof playPromise.then === 'function') {
+            playPromise
+                .then(() => {
+                    this.bgmStarted = true;
+                })
+                .catch(() => {
+                    // Autoplay bloqueado pelo navegador: inicia automaticamente no 1º toque/tecla
+                });
+        }
+    }
+
+    setBgmVolume(vol) {
+        if (this.bgm) {
+            this.bgm.volume = Math.max(0, Math.min(1, vol));
+        }
     }
 
     unlock() {
@@ -20,10 +47,23 @@ class SoundFX {
                 this.ctx.resume();
             }
         } catch (e) { }
+
+        // Garante o início da música assim que houver a primeira interação do usuário
+        if (!this.muted && this.bgm && this.bgm.paused) {
+            this.startBgm();
+        }
     }
 
     toggleMute() {
         this.muted = !this.muted;
+        if (this.bgm) {
+            this.bgm.muted = this.muted;
+            if (this.muted) {
+                this.bgm.pause();
+            } else {
+                this.startBgm();
+            }
+        }
         return this.muted;
     }
 
@@ -3527,6 +3567,7 @@ class NoelDeliveryScene extends Phaser.Scene {
         if (this.gameState === 'PLAYING') {
             this.gameState = 'PAUSED';
             this.physics.pause();
+            soundFX.setBgmVolume(0.14);
             gameBridge.isFlyHeld = false;
             gameBridge.activeFlyPointers.clear();
             this.canvasFlyPointers.clear();
@@ -3535,6 +3576,7 @@ class NoelDeliveryScene extends Phaser.Scene {
         } else if (this.gameState === 'PAUSED') {
             this.gameState = 'PLAYING';
             this.physics.resume();
+            soundFX.setBgmVolume(0.35);
             ui.pauseOverlay.classList.add('hidden');
         }
     }
@@ -4966,6 +5008,30 @@ function runSplashIntro() {
 
 window.addEventListener('load', () => {
     runSplashIntro();
+
+    // Tenta tocar a música já na abertura (intro/menu)
+    soundFX.startBgm();
+
+    // Fallback para Chrome/Safari/Mobile: desbloqueia o áudio no 1º toque ou tecla
+    const unlockOnFirstGesture = () => {
+        soundFX.unlock();
+        if (soundFX.bgmStarted) {
+            window.removeEventListener('pointerdown', unlockOnFirstGesture);
+            window.removeEventListener('keydown', unlockOnFirstGesture);
+        }
+    };
+    window.addEventListener('pointerdown', unlockOnFirstGesture, { passive: true });
+    window.addEventListener('keydown', unlockOnFirstGesture, { passive: true });
+
+    // Pausa a música ao minimizar o navegador no celular e retoma ao voltar
+    document.addEventListener('visibilitychange', () => {
+        if (!soundFX.bgm) return;
+        if (document.hidden) {
+            soundFX.bgm.pause();
+        } else if (!soundFX.muted && soundFX.bgmStarted) {
+            soundFX.startBgm();
+        }
+    });
 
     const config = {
         type: Phaser.AUTO,
